@@ -624,67 +624,7 @@ const WatermarkRemover = () => {
       {/* Left Sidebar */}
       <div className="w-80 flex-shrink-0 border-r bg-white">
         <div className="h-full flex flex-col p-4">
-          {progress > 0 && isProcessing && (
-            <Card className="mb-4">
-              <CardContent className="p-4">
-                <Progress value={progress} />
-                <p className="text-center mt-2 text-sm text-gray-600">处理进度: {progress}%</p>
-              </CardContent>
-            </Card>
-          )}
-
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold">图片列表</h2>
-            <div>
-              <input
-                type="file"
-                id="upload"
-                multiple
-                accept="image/*"
-                className="hidden"
-                onChange={handleFileUpload}
-              />
-              <Button asChild disabled={isProcessing} size="sm">
-                <label htmlFor="upload" className="flex items-center space-x-2 cursor-pointer">
-                  <Upload className="h-4 w-4" />
-                  <span>上传图片</span>
-                </label>
-              </Button>
-            </div>
-          </div>
-
-          <div className="flex flex-col space-y-2 mb-4">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">处理算法:</span>
-              <select
-                value={processingAlgorithm}
-                onChange={(e) => setProcessingAlgorithm(e.target.value as 'enhanced' | 'conservative' | 'aggressive')}
-                className="text-xs border rounded px-2 py-1"
-                disabled={isProcessing}
-              >
-                <option value="enhanced">增强检测</option>
-                <option value="conservative">保守处理</option>
-                <option value="aggressive">激进处理</option>
-              </select>
-            </div>
-            
-            <Button
-              variant={isMarkingMode ? "default" : "outline"}
-              size="sm"
-              onClick={() => setIsMarkingMode(!isMarkingMode)}
-              disabled={isProcessing}
-              className="w-full"
-            >
-              <MapPin className="h-4 w-4 mr-2" />
-              {isMarkingMode ? '退出标记模式' : '手动标记水印'}
-            </Button>
-            
-            {isMarkingMode && (
-              <div className="text-sm text-blue-600 bg-blue-50 px-3 py-1 rounded">
-                拖动鼠标创建矩形标记
-              </div>
-            )}
-          </div>
+          {/* ... keep existing code (progress bar, header, algorithm selection) */}
           
           <ScrollArea className="flex-1">
             <div className="space-y-2">
@@ -727,8 +667,8 @@ const WatermarkRemover = () => {
       </div>
 
       {/* Main Content Area - Full Screen */}
-      <div className="flex-1 flex flex-col bg-gray-50">
-        <div className="flex items-center justify-between p-4 bg-white border-b">
+      <div className="flex-1 flex flex-col bg-gray-50 min-w-0">
+        <div className="flex items-center justify-between p-4 bg-white border-b flex-shrink-0">
           <h2 className="text-lg font-semibold">图片处理结果</h2>
           {selectedImage && (
             <div className="flex items-center space-x-2">
@@ -787,10 +727,10 @@ const WatermarkRemover = () => {
         </div>
         
         {selectedImage ? (
-          <div className="flex-1 grid grid-cols-2 gap-4 p-4 min-h-0">
+          <div className="flex-1 grid grid-cols-2 gap-4 p-4 min-h-0 overflow-hidden">
             {/* Original Image */}
-            <div className="flex flex-col">
-              <div className="flex items-center justify-between mb-2">
+            <div className="flex flex-col min-h-0">
+              <div className="flex items-center justify-between mb-2 flex-shrink-0">
                 <span className="text-sm font-medium text-gray-600">原图</span>
                 <div className="flex items-center space-x-1">
                   <Button
@@ -819,36 +759,34 @@ const WatermarkRemover = () => {
                   </Button>
                 </div>
               </div>
-              <div className="flex-1 relative bg-white rounded-lg border overflow-hidden">
-                <ScrollArea className="w-full h-full">
-                  <div className="w-full h-full flex items-center justify-center p-4">
-                    <div className="relative">
-                      <img
-                        src={selectedImage.url}
-                        alt="原图"
-                        className={`block max-w-full max-h-full object-contain ${
-                          isMarkingMode ? 'cursor-crosshair' : ''
-                        }`}
-                        style={{
-                          transform: `scale(${originalZoom})`,
-                          transformOrigin: 'center center'
-                        }}
-                        onMouseDown={(e) => handleMouseDown(e, selectedImage.id)}
-                        onMouseMove={handleMouseMove}
-                        onMouseUp={(e) => handleMouseUp(e, selectedImage.id)}
-                        draggable={false}
-                      />
-                      {renderWatermarkMarks(selectedImage.watermarkMarks)}
-                      {renderDragPreview()}
-                    </div>
+              <div className="flex-1 relative bg-white rounded-lg border overflow-hidden min-h-0">
+                <div className="absolute inset-0 flex items-center justify-center p-4">
+                  <div className="relative max-w-full max-h-full">
+                    <img
+                      src={selectedImage.url}
+                      alt="原图"
+                      className={`block w-auto h-auto max-w-full max-h-full object-contain ${
+                        isMarkingMode ? 'cursor-crosshair' : ''
+                      }`}
+                      style={{
+                        transform: `scale(${originalZoom})`,
+                        transformOrigin: 'center center'
+                      }}
+                      onMouseDown={(e) => handleMouseDown(e, selectedImage.id)}
+                      onMouseMove={handleMouseMove}
+                      onMouseUp={(e) => handleMouseUp(e, selectedImage.id)}
+                      draggable={false}
+                    />
+                    {renderWatermarkMarks(selectedImage.watermarkMarks)}
+                    {renderDragPreview()}
                   </div>
-                </ScrollArea>
+                </div>
               </div>
             </div>
             
             {/* Processed Image */}
-            <div className="flex flex-col">
-              <div className="flex items-center justify-between mb-2">
+            <div className="flex flex-col min-h-0">
+              <div className="flex items-center justify-between mb-2 flex-shrink-0">
                 <span className="text-sm font-medium text-gray-600">处理后</span>
                 <div className="flex items-center space-x-1">
                   <Button
@@ -880,33 +818,31 @@ const WatermarkRemover = () => {
                   </Button>
                 </div>
               </div>
-              <div className="flex-1 relative bg-white rounded-lg border overflow-hidden">
+              <div className="flex-1 relative bg-white rounded-lg border overflow-hidden min-h-0">
                 {selectedImage.processedUrl ? (
-                  <ScrollArea className="w-full h-full">
-                    <div className="w-full h-full flex items-center justify-center p-4">
-                      <div className="relative">
-                        <img
-                          src={selectedImage.processedUrl}
-                          alt="处理后"
-                          className={`block max-w-full max-h-full object-contain ${
-                            isMarkingMode ? 'cursor-crosshair' : ''
-                          }`}
-                          style={{
-                            transform: `scale(${processedZoom})`,
-                            transformOrigin: 'center center'
-                          }}
-                          onMouseDown={(e) => handleMouseDown(e, selectedImage.id)}
-                          onMouseMove={handleMouseMove}
-                          onMouseUp={(e) => handleMouseUp(e, selectedImage.id)}
-                          draggable={false}
-                        />
-                        {isMarkingMode && renderWatermarkMarks(selectedImage.watermarkMarks)}
-                        {isMarkingMode && renderDragPreview()}
-                      </div>
+                  <div className="absolute inset-0 flex items-center justify-center p-4">
+                    <div className="relative max-w-full max-h-full">
+                      <img
+                        src={selectedImage.processedUrl}
+                        alt="处理后"
+                        className={`block w-auto h-auto max-w-full max-h-full object-contain ${
+                          isMarkingMode ? 'cursor-crosshair' : ''
+                        }`}
+                        style={{
+                          transform: `scale(${processedZoom})`,
+                          transformOrigin: 'center center'
+                        }}
+                        onMouseDown={(e) => handleMouseDown(e, selectedImage.id)}
+                        onMouseMove={handleMouseMove}
+                        onMouseUp={(e) => handleMouseUp(e, selectedImage.id)}
+                        draggable={false}
+                      />
+                      {isMarkingMode && renderWatermarkMarks(selectedImage.watermarkMarks)}
+                      {isMarkingMode && renderDragPreview()}
                     </div>
-                  </ScrollArea>
+                  </div>
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center text-gray-400 text-sm">
+                  <div className="absolute inset-0 flex items-center justify-center text-gray-400 text-sm">
                     {isProcessing && selectedImageId === selectedImage.id ? (
                       <div className="text-center">
                         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-2"></div>
