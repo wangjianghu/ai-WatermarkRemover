@@ -1,4 +1,3 @@
-
 import React, { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -58,29 +57,92 @@ const WatermarkRemover = () => {
     }
   };
 
+  // 更精确的水印像素检测 - 提高阈值，减少误判
   const isWatermarkPixel = (data: Uint8ClampedArray, index: number, x: number, y: number, width: number, height: number): boolean => {
     const r = data[index];
     const g = data[index + 1];
     const b = data[index + 2];
     const a = data[index + 3];
     
+    // 只在图片边缘区域检测水印（通常水印在角落）
+    const isInWatermarkRegion = isInPotentialWatermarkRegion(x, y, width, height);
+    if (!isInWatermarkRegion) {
+      return false;
+    }
+    
     const brightness = (r + g + b) / 3;
     
-    const isTransparent = a < 200;
-    const isExtremeBright = brightness > 220 || brightness < 40;
+    // 更严格的透明度检测
+    const isTransparent = a < 180; // 提高阈值
+    
+    // 更严格的亮度检测
+    const isExtremeBright = brightness > 240 || brightness < 20; // 缩小范围
+    
     const contrast = calculateLocalContrast(data, x, y, width, height);
-    const hasHighContrast = contrast > 60;
+    const hasHighContrast = contrast > 80; // 提高阈值
+    
     const isTextLike = detectTextFeatures(data, x, y, width, height);
-    const isMonochrome = Math.abs(r - g) < 15 && Math.abs(g - b) < 15 && Math.abs(r - b) < 15;
+    const isMonochrome = Math.abs(r - g) < 10 && Math.abs(g - b) < 10 && Math.abs(r - b) < 10;
+    
+    // 检查是否是孤立的异常像素
+    const isIsolatedPixel = checkIsolatedPixel(data, x, y, width, height);
     
     let suspicionScore = 0;
-    if (isTransparent) suspicionScore += 0.4;
-    if (isExtremeBright) suspicionScore += 0.3;
-    if (hasHighContrast) suspicionScore += 0.2;
-    if (isTextLike) suspicionScore += 0.4;
-    if (isMonochrome && brightness > 180) suspicionScore += 0.3;
+    if (isTransparent) suspicionScore += 0.5;
+    if (isExtremeBright) suspicionScore += 0.4;
+    if (hasHighContrast) suspicionScore += 0.3;
+    if (isTextLike) suspicionScore += 0.5;
+    if (isMonochrome && brightness > 200) suspicionScore += 0.4;
+    if (isIsolatedPixel) suspicionScore += 0.3;
     
-    return suspicionScore > 0.6;
+    // 大幅提高阈值，减少误判
+    return suspicionScore > 1.2;
+  };
+
+  // 检查是否在潜在的水印区域
+  const isInPotentialWatermarkRegion = (x: number, y: number, width: number, height: number): boolean => {
+    const edgeThreshold = 0.15; // 边缘区域的比例
+    
+    // 右下角
+    if (x > width * (1 - edgeThreshold) && y > height * (1 - edgeThreshold)) return true;
+    // 右上角
+    if (x > width * (1 - edgeThreshold) && y < height * edgeThreshold) return true;
+    // 左下角
+    if (x < width * edgeThreshold && y > height * (1 - edgeThreshold)) return true;
+    // 左上角
+    if (x < width * edgeThreshold && y < height * edgeThreshold) return true;
+    
+    return false;
+  };
+
+  // 检查是否是孤立的异常像素
+  const checkIsolatedPixel = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number): boolean => {
+    const centerIndex = (y * width + x) * 4;
+    const centerBrightness = (data[centerIndex] + data[centerIndex + 1] + data[centerIndex + 2]) / 3;
+    
+    let differentNeighbors = 0;
+    let totalNeighbors = 0;
+    
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        
+        const nx = x + dx;
+        const ny = y + dy;
+        
+        if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+          const neighborIndex = (ny * width + nx) * 4;
+          const neighborBrightness = (data[neighborIndex] + data[neighborIndex + 1] + data[neighborIndex + 2]) / 3;
+          
+          if (Math.abs(centerBrightness - neighborBrightness) > 50) {
+            differentNeighbors++;
+          }
+          totalNeighbors++;
+        }
+      }
+    }
+    
+    return totalNeighbors > 0 && (differentNeighbors / totalNeighbors) > 0.6;
   };
 
   const calculateLocalContrast = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number): number => {
@@ -88,7 +150,7 @@ const WatermarkRemover = () => {
     const centerBrightness = (data[centerIndex] + data[centerIndex + 1] + data[centerIndex + 2]) / 3;
     
     let maxDiff = 0;
-    const radius = 3;
+    const radius = 2; // 减小检测半径
     
     for (let dy = -radius; dy <= radius; dy++) {
       for (let dx = -radius; dx <= radius; dx++) {
@@ -109,7 +171,7 @@ const WatermarkRemover = () => {
   const detectTextFeatures = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number): boolean => {
     let edgeCount = 0;
     let totalPixels = 0;
-    const radius = 2;
+    const radius = 1; // 减小检测半径
     
     for (let dy = -radius; dy <= radius; dy++) {
       for (let dx = -radius; dx <= radius; dx++) {
@@ -118,13 +180,15 @@ const WatermarkRemover = () => {
         
         if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
           const edgeStrength = calculateEdgeStrength(data, nx, ny, width, height);
-          if (edgeStrength > 30) edgeCount++;
+          if (edgeStrength > 50) { // 提高边缘强度阈值
+            edgeCount++;
+          }
           totalPixels++;
         }
       }
     }
     
-    return totalPixels > 0 && (edgeCount / totalPixels) > 0.4;
+    return totalPixels > 0 && (edgeCount / totalPixels) > 0.5; // 提高比例阈值
   };
 
   const calculateEdgeStrength = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number): number => {
@@ -151,11 +215,15 @@ const WatermarkRemover = () => {
     return Math.sqrt(gx * gx + gy * gy);
   };
 
+  // 更保守的像素修复算法
   const repairPixel = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number, radius: number) => {
     const validPixels: Array<{r: number, g: number, b: number, a: number, weight: number}> = [];
     
-    for (let dy = -radius; dy <= radius; dy++) {
-      for (let dx = -radius; dx <= radius; dx++) {
+    // 减小修复半径，避免过度修复
+    const repairRadius = Math.min(radius, 3);
+    
+    for (let dy = -repairRadius; dy <= repairRadius; dy++) {
+      for (let dx = -repairRadius; dx <= repairRadius; dx++) {
         if (dx === 0 && dy === 0) continue;
         
         const nx = x + dx;
@@ -164,6 +232,7 @@ const WatermarkRemover = () => {
         if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
           const neighborIndex = (ny * width + nx) * 4;
           
+          // 只使用确定不是水印的像素进行修复
           if (!isWatermarkPixel(data, neighborIndex, nx, ny, width, height)) {
             const distance = Math.sqrt(dx * dx + dy * dy);
             const weight = 1 / (distance * distance + 0.1);
@@ -182,9 +251,13 @@ const WatermarkRemover = () => {
     
     if (validPixels.length === 0) return null;
     
+    // 只使用最近的几个像素，避免过度平滑
+    validPixels.sort((a, b) => b.weight - a.weight);
+    const usePixels = validPixels.slice(0, Math.min(validPixels.length, 4));
+    
     let totalR = 0, totalG = 0, totalB = 0, totalA = 0, totalWeight = 0;
     
-    validPixels.forEach(pixel => {
+    usePixels.forEach(pixel => {
       totalR += pixel.r * pixel.weight;
       totalG += pixel.g * pixel.weight;
       totalB += pixel.b * pixel.weight;
@@ -200,57 +273,14 @@ const WatermarkRemover = () => {
     };
   };
 
+  // 移除后处理，避免对整张图片进行平滑处理
   const applyPostProcessing = (data: Uint8ClampedArray, width: number, height: number) => {
-    const tempData = new Uint8ClampedArray(data);
-    
-    for (let y = 1; y < height - 1; y++) {
-      for (let x = 1; x < width - 1; x++) {
-        const index = (y * width + x) * 4;
-        
-        if (needsSmoothing(tempData, x, y, width, height)) {
-          for (let c = 0; c < 3; c++) {
-            let sum = 0;
-            let count = 0;
-            
-            for (let dy = -1; dy <= 1; dy++) {
-              for (let dx = -1; dx <= 1; dx++) {
-                const nx = x + dx;
-                const ny = y + dy;
-                const nIndex = (ny * width + nx) * 4;
-                sum += tempData[nIndex + c];
-                count++;
-              }
-            }
-            
-            data[index + c] = Math.round(sum / count);
-          }
-        }
-      }
-    }
+    // 不进行全局后处理，保持图片原有清晰度
+    console.log('跳过后处理以保持图片清晰度');
   };
 
   const needsSmoothing = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number): boolean => {
-    const centerIndex = (y * width + x) * 4;
-    let variance = 0;
-    let count = 0;
-    
-    for (let dy = -1; dy <= 1; dy++) {
-      for (let dx = -1; dx <= 1; dx++) {
-        const nx = x + dx;
-        const ny = y + dy;
-        
-        if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
-          const nIndex = (ny * width + nx) * 4;
-          const diff = Math.abs(data[centerIndex] - data[nIndex]) + 
-                      Math.abs(data[centerIndex + 1] - data[nIndex + 1]) + 
-                      Math.abs(data[centerIndex + 2] - data[nIndex + 2]);
-          variance += diff;
-          count++;
-        }
-      }
-    }
-    
-    return count > 0 && (variance / count) > 30;
+    return false; // 禁用平滑处理
   };
 
   const processImageCanvas = async (imageFile: File): Promise<Blob> => {
@@ -272,33 +302,39 @@ const WatermarkRemover = () => {
         
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         const data = imageData.data;
-
+        
+        let processedPixels = 0;
+        
+        // 只处理检测到的水印像素
         for (let i = 0; i < data.length; i += 4) {
           const x = (i / 4) % canvas.width;
           const y = Math.floor((i / 4) / canvas.width);
           
           if (isWatermarkPixel(data, i, x, y, canvas.width, canvas.height)) {
-            const repaired = repairPixel(data, x, y, canvas.width, canvas.height, 8);
+            const repaired = repairPixel(data, x, y, canvas.width, canvas.height, 3);
             if (repaired) {
               data[i] = repaired.r;
               data[i + 1] = repaired.g;
               data[i + 2] = repaired.b;
               data[i + 3] = repaired.a;
+              processedPixels++;
             }
           }
         }
 
-        applyPostProcessing(data, canvas.width, canvas.height);
+        console.log(`处理了 ${processedPixels} 个水印像素`);
         
+        // 不进行后处理，直接输出
         ctx.putImageData(imageData, 0, 0);
         
+        // 使用更高的质量保存
         canvas.toBlob((blob) => {
           if (blob) {
             resolve(blob);
           } else {
             reject(new Error('无法生成处理后的图片'));
           }
-        }, 'image/jpeg', 0.95);
+        }, 'image/png', 1.0); // 使用PNG格式和最高质量
       };
       
       img.onerror = () => reject(new Error('图片加载失败'));
@@ -524,7 +560,7 @@ const WatermarkRemover = () => {
                         <img
                           src={selectedImage.url}
                           alt={selectedImage.file.name}
-                          className="object-contain"
+                          className="object-contain max-w-none"
                           style={{
                             transform: `rotate(${selectedImage.rotation}deg) scale(${zoomLevel})`,
                             transformOrigin: 'center center'
@@ -548,7 +584,7 @@ const WatermarkRemover = () => {
                           <img
                             src={selectedImage.processedUrl}
                             alt={`处理后的 ${selectedImage.file.name}`}
-                            className="object-contain"
+                            className="object-contain max-w-none"
                             style={{
                               transform: `rotate(${selectedImage.rotation}deg) scale(${zoomLevel})`,
                               transformOrigin: 'center center'
