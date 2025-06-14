@@ -12,6 +12,7 @@ interface ImageItem {
   url: string;
   processedUrl: string | null;
   rotation: number;
+  dimensions?: { width: number; height: number };
 }
 
 type ZoomLevel = number;
@@ -25,16 +26,32 @@ const WatermarkRemover = () => {
 
   const processorRef = useRef<AdvancedWatermarkProcessor | null>(null);
 
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const loadImageDimensions = (file: File): Promise<{ width: number; height: number }> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        resolve({ width: img.naturalWidth, height: img.naturalHeight });
+      };
+      img.src = URL.createObjectURL(file);
+    });
+  };
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (files && files.length > 0) {
-      const newImages = Array.from(files).map(file => ({
-        id: crypto.randomUUID(),
-        file: file,
-        url: URL.createObjectURL(file),
-        processedUrl: null,
-        rotation: 0,
-      }));
+      const newImages = await Promise.all(
+        Array.from(files).map(async (file) => {
+          const dimensions = await loadImageDimensions(file);
+          return {
+            id: crypto.randomUUID(),
+            file: file,
+            url: URL.createObjectURL(file),
+            processedUrl: null,
+            rotation: 0,
+            dimensions,
+          };
+        })
+      );
       setImages(prevImages => [...prevImages, ...newImages]);
       event.target.value = ''; // Reset the input
     }
@@ -194,8 +211,8 @@ const WatermarkRemover = () => {
                             className="relative m-4 rounded-md overflow-hidden"
                             style={{
                               transform: `rotate(${image.rotation}deg)`,
-                              width: `${image.file.width * zoomLevel}px`,
-                              height: `${image.file.height * zoomLevel}px`,
+                              width: `${(image.dimensions?.width || 300) * zoomLevel}px`,
+                              height: `${(image.dimensions?.height || 300) * zoomLevel}px`,
                             }}
                           >
                             <img
@@ -238,8 +255,8 @@ const WatermarkRemover = () => {
                               className="relative m-4 rounded-md overflow-hidden"
                               style={{
                                 transform: `rotate(${image.rotation}deg)`,
-                                width: `${image.file.width * zoomLevel}px`,
-                                height: `${image.file.height * zoomLevel}px`,
+                                width: `${(image.dimensions?.width || 300) * zoomLevel}px`,
+                                height: `${(image.dimensions?.height || 300) * zoomLevel}px`,
                               }}
                             >
                               <img
