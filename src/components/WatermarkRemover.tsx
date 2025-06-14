@@ -1348,57 +1348,70 @@ const WatermarkRemover = () => {
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col bg-gray-50 min-w-0">
-        <div className="flex items-center justify-between p-4 bg-white border-b flex-shrink-0">
-          <div className="flex items-center space-x-4">
-            <h2 className="text-lg font-semibold">图片处理结果</h2>
-            {isBatchProcessing && (
-              <div className="flex items-center space-x-2">
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
-                <span className="text-sm text-gray-600">批量处理中...</span>
+        <div className="p-4 bg-white border-b flex-shrink-0">
+          <div className="flex flex-col space-y-3">
+            {/* Title Row */}
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold">图片处理结果</h2>
+              {isBatchProcessing && (
+                <div className="flex items-center space-x-2">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
+                  <span className="text-sm text-gray-600">批量处理中...</span>
+                </div>
+              )}
+            </div>
+            
+            {/* Buttons Row */}
+            {selectedImage && (
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant={isMarkingMode ? "default" : "outline"} size="sm" onClick={() => {
+                  setIsMarkingMode(!isMarkingMode);
+                  setSelectedMark(false);
+                }} className="text-xs" disabled={isBatchProcessing}>
+                  <MapPin className="h-3 w-3 mr-1" />
+                  {isMarkingMode ? '完成标记' : '标记水印'}
+                </Button>
+                {selectedImage.watermarkMark && (
+                  <Button variant="outline" size="sm" onClick={() => clearWatermarkMark(selectedImage.id)} className="text-xs" disabled={isBatchProcessing}>
+                    清除标记
+                  </Button>
+                )}
+                {selectedImage.watermarkMark && (
+                  <Button variant="outline" size="sm" onClick={handleBatchApplyWatermark} className="text-xs" disabled={isBatchProcessing}>
+                    <Copy className="h-3 w-3 mr-1" />
+                    批量应用
+                  </Button>
+                )}
+                {selectedImage.processedUrl && (
+                  <Button variant="outline" size="sm" onClick={() => restoreToOriginal(selectedImage.id)} className="text-xs" disabled={isBatchProcessing}>
+                    <Undo2 className="h-3 w-3 mr-1" />
+                    还原原图
+                  </Button>
+                )}
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => handleRemoveWatermark(selectedImage)} 
+                  disabled={isProcessing || isBatchProcessing || !selectedImage.watermarkMark}
+                  className="text-xs"
+                  title={!selectedImage.watermarkMark ? "请先标记水印位置" : ""}
+                >
+                  <RefreshCw className="h-3 w-3 mr-1" />
+                  {isProcessing ? '处理中...' : 
+                   !selectedImage.watermarkMark ? '需标记' :
+                   selectedImage.processCount > 0 ? '继续处理' : '去水印'}
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => handleDownload(selectedImage)} className="text-xs" disabled={isBatchProcessing}>
+                  <Download className="h-3 w-3 mr-1" />
+                  下载
+                </Button>
+                <Button variant="outline" size="sm" onClick={handleBatchDownload} className="text-xs" disabled={isBatchProcessing}>
+                  <Download className="h-3 w-3 mr-1" />
+                  批量下载
+                </Button>
               </div>
             )}
           </div>
-          {selectedImage && <div className="flex items-center space-x-2">
-              <Button variant={isMarkingMode ? "default" : "outline"} size="sm" onClick={() => {
-            setIsMarkingMode(!isMarkingMode);
-            setSelectedMark(false);
-          }} className="text-xs" disabled={isBatchProcessing}>
-                <MapPin className="h-3 w-3 mr-1" />
-                {isMarkingMode ? '完成标记' : '标记水印'}
-              </Button>
-              {selectedImage.watermarkMark && <Button variant="outline" size="sm" onClick={() => clearWatermarkMark(selectedImage.id)} className="text-xs" disabled={isBatchProcessing}>
-                  清除标记
-                </Button>}
-              {selectedImage.watermarkMark && <Button variant="outline" size="sm" onClick={handleBatchApplyWatermark} className="text-xs" disabled={isBatchProcessing}>
-                  <Copy className="h-3 w-3 mr-1" />
-                  批量应用
-                </Button>}
-              {selectedImage.processedUrl && <Button variant="outline" size="sm" onClick={() => restoreToOriginal(selectedImage.id)} className="text-xs" disabled={isBatchProcessing}>
-                  <Undo2 className="h-3 w-3 mr-1" />
-                  还原原图
-                </Button>}
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={() => handleRemoveWatermark(selectedImage)} 
-                disabled={isProcessing || isBatchProcessing || !selectedImage.watermarkMark}
-                className="text-xs"
-                title={!selectedImage.watermarkMark ? "请先标记水印位置" : ""}
-              >
-                <RefreshCw className="h-3 w-3 mr-1" />
-                {isProcessing ? '处理中...' : 
-                 !selectedImage.watermarkMark ? '需标记' :
-                 selectedImage.processCount > 0 ? '继续处理' : '去水印'}
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => handleDownload(selectedImage)} className="text-xs" disabled={isBatchProcessing}>
-                <Download className="h-3 w-3 mr-1" />
-                下载
-              </Button>
-              <Button variant="outline" size="sm" onClick={handleBatchDownload} className="text-xs" disabled={isBatchProcessing}>
-                <Download className="h-3 w-3 mr-1" />
-                批量下载
-              </Button>
-            </div>}
         </div>
         
         {selectedImage ? <div className="flex-1 grid grid-cols-2 gap-4 p-4 min-h-0 overflow-hidden">
