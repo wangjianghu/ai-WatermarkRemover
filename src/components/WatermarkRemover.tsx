@@ -1,3 +1,4 @@
+
 import React, { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -131,6 +132,32 @@ const WatermarkRemover = () => {
     setSelectedImageId(imageId);
   };
 
+  const selectedImage = images.find(img => img.id === selectedImageId);
+
+  // 计算最适合的显示尺寸
+  const calculateDisplaySize = (dimensions?: { width: number; height: number }) => {
+    if (!dimensions) return { width: 400, height: 300 };
+    
+    const maxWidth = 500;
+    const maxHeight = 400;
+    const { width, height } = dimensions;
+    
+    const aspectRatio = width / height;
+    
+    let displayWidth = maxWidth;
+    let displayHeight = maxWidth / aspectRatio;
+    
+    if (displayHeight > maxHeight) {
+      displayHeight = maxHeight;
+      displayWidth = maxHeight * aspectRatio;
+    }
+    
+    return {
+      width: displayWidth * zoomLevel,
+      height: displayHeight * zoomLevel
+    };
+  };
+
   return (
     <div className="max-w-7xl mx-auto p-6 space-y-6">
       <Card>
@@ -157,7 +184,7 @@ const WatermarkRemover = () => {
         </CardContent>
       </Card>
       
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         <Card>
           <CardContent className="space-y-4">
             <h2 className="text-lg font-semibold">上传列表</h2>
@@ -168,15 +195,18 @@ const WatermarkRemover = () => {
                   className={`flex items-center justify-between p-2 border rounded-md cursor-pointer ${selectedImageId === image.id ? 'bg-gray-100' : ''}`}
                   onClick={() => handleImageClick(image.id)}
                 >
-                  <span>{image.file.name}</span>
+                  <span className="text-sm truncate">{image.file.name}</span>
                   <div className="flex space-x-2">
                     <Button
                       variant="outline"
-                      size="icon"
-                      onClick={() => handleRemoveWatermark(image)}
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleRemoveWatermark(image);
+                      }}
                       disabled={isProcessing}
                     >
-                      <Download className="h-4 w-4" />
+                      处理
                     </Button>
                   </div>
                 </div>
@@ -185,11 +215,11 @@ const WatermarkRemover = () => {
           </CardContent>
         </Card>
 
-        <Card className="lg:col-span-2">
+        <Card className="lg:col-span-3">
           <CardContent className="space-y-4">
-            <h2 className="text-lg font-semibold">图片预览</h2>
-            {selectedImageId && (
-              <>
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold">图片对比</h2>
+              {selectedImage && (
                 <div className="flex items-center space-x-2">
                   <Button variant="outline" size="icon" onClick={handleZoomIn}>
                     <ZoomIn className="h-4 w-4" />
@@ -197,96 +227,84 @@ const WatermarkRemover = () => {
                   <Button variant="outline" size="icon" onClick={handleZoomOut}>
                     <ZoomOut className="h-4 w-4" />
                   </Button>
-                  <Button variant="outline" size="icon" onClick={() => handleRotate(selectedImageId)}>
+                  <Button variant="outline" size="icon" onClick={() => handleRotate(selectedImageId!)}>
                     <RotateCcw className="h-4 w-4" />
                   </Button>
+                  <span className="text-sm text-gray-600">
+                    {Math.round(zoomLevel * 100)}%
+                  </span>
                 </div>
-                <div className="flex overflow-x-auto">
-                  {images.map(image => {
-                    if (image.id === selectedImageId) {
-                      return (
-                        <div key={image.id} className="flex flex-col items-center">
-                          <h3 className="text-md font-semibold">原始图片</h3>
-                          <div
-                            className="relative m-4 rounded-md overflow-hidden"
-                            style={{
-                              transform: `rotate(${image.rotation}deg)`,
-                              width: `${(image.dimensions?.width || 300) * zoomLevel}px`,
-                              height: `${(image.dimensions?.height || 300) * zoomLevel}px`,
-                            }}
-                          >
-                            <img
-                              src={image.url}
-                              alt={image.file.name}
-                              style={{
-                                width: 'auto',
-                                height: 'auto',
-                                minWidth: '100%',
-                                minHeight: '100%',
-                                maxWidth: 'none',
-                                maxHeight: 'none',
-                              }}
-                            />
-                          </div>
-                        </div>
-                      );
-                    }
-                    return null;
-                  })}
-                </div>
-              </>
-            )}
-          </CardContent>
-        </Card>
+              )}
+            </div>
+            
+            {selectedImage ? (
+              <div className="flex justify-center">
+                <div className="flex flex-col lg:flex-row gap-6 items-start">
+                  {/* 原始图片 */}
+                  <div className="flex flex-col items-center space-y-2">
+                    <h3 className="text-md font-semibold text-center">原始图片</h3>
+                    <div 
+                      className="border-2 border-gray-200 rounded-lg overflow-hidden bg-gray-50 flex items-center justify-center"
+                      style={calculateDisplaySize(selectedImage.dimensions)}
+                    >
+                      <img
+                        src={selectedImage.url}
+                        alt={selectedImage.file.name}
+                        className="max-w-full max-h-full object-contain"
+                        style={{
+                          transform: `rotate(${selectedImage.rotation}deg)`,
+                        }}
+                      />
+                    </div>
+                  </div>
 
-        <Card className="lg:col-span-2">
-          <CardContent className="space-y-4">
-            <h2 className="text-lg font-semibold">处理结果</h2>
-            {selectedImageId && (
-              <>
-                <div className="flex overflow-x-auto">
-                  {images.map(image => {
-                    if (image.id === selectedImageId) {
-                      return (
-                        <div key={image.id} className="flex flex-col items-center">
-                          <h3 className="text-md font-semibold">处理结果</h3>
-                          {image.processedUrl ? (
-                            <div
-                              className="relative m-4 rounded-md overflow-hidden"
-                              style={{
-                                transform: `rotate(${image.rotation}deg)`,
-                                width: `${(image.dimensions?.width || 300) * zoomLevel}px`,
-                                height: `${(image.dimensions?.height || 300) * zoomLevel}px`,
-                              }}
-                            >
-                              <img
-                                src={image.processedUrl}
-                                alt={`Processed ${image.file.name}`}
-                                style={{
-                                  width: 'auto',
-                                  height: 'auto',
-                                  minWidth: '100%',
-                                  minHeight: '100%',
-                                  maxWidth: 'none',
-                                  maxHeight: 'none',
-                                }}
-                              />
-                            </div>
-                          ) : (
-                            <p>请先去除水印</p>
-                          )}
-                          {image.processedUrl && (
-                            <Button variant="outline" onClick={() => handleDownload(image)}>
-                              下载
-                            </Button>
-                          )}
+                  {/* 处理后图片 */}
+                  <div className="flex flex-col items-center space-y-2">
+                    <h3 className="text-md font-semibold text-center">处理结果</h3>
+                    <div 
+                      className="border-2 border-gray-200 rounded-lg overflow-hidden bg-gray-50 flex items-center justify-center"
+                      style={calculateDisplaySize(selectedImage.dimensions)}
+                    >
+                      {selectedImage.processedUrl ? (
+                        <img
+                          src={selectedImage.processedUrl}
+                          alt={`Processed ${selectedImage.file.name}`}
+                          className="max-w-full max-h-full object-contain"
+                          style={{
+                            transform: `rotate(${selectedImage.rotation}deg)`,
+                          }}
+                        />
+                      ) : (
+                        <div className="flex flex-col items-center justify-center text-gray-500 space-y-2">
+                          <p className="text-center">请先处理图片</p>
+                          <Button 
+                            onClick={() => handleRemoveWatermark(selectedImage)}
+                            disabled={isProcessing}
+                            size="sm"
+                          >
+                            开始处理
+                          </Button>
                         </div>
-                      );
-                    }
-                    return null;
-                  })}
+                      )}
+                    </div>
+                    
+                    {selectedImage.processedUrl && (
+                      <Button 
+                        variant="outline" 
+                        onClick={() => handleDownload(selectedImage)}
+                        className="mt-2"
+                      >
+                        <Download className="h-4 w-4 mr-2" />
+                        下载
+                      </Button>
+                    )}
+                  </div>
                 </div>
-              </>
+              </div>
+            ) : (
+              <div className="flex items-center justify-center h-64 text-gray-500">
+                <p>请从左侧列表选择一张图片</p>
+              </div>
             )}
           </CardContent>
         </Card>
