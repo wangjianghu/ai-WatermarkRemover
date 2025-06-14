@@ -6,7 +6,6 @@ import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
 import { Upload, Download, Trash2, Eye, EyeOff } from "lucide-react";
 import { ImageProcessor } from './ImageProcessor';
-import { ProcessedImage } from './ProcessedImage';
 
 interface ProcessedImageData {
   id: string;
@@ -20,7 +19,7 @@ interface ProcessedImageData {
 export const WatermarkRemover = () => {
   const [images, setImages] = useState<ProcessedImageData[]>([]);
   const [dragActive, setDragActive] = useState(false);
-  const [showOriginal, setShowOriginal] = useState<{[key: string]: boolean}>({});
+  const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFiles = (files: FileList) => {
@@ -47,6 +46,9 @@ export const WatermarkRemover = () => {
     }
     
     setImages(prev => [...prev, ...newImages]);
+    if (!selectedImageId && newImages.length > 0) {
+      setSelectedImageId(newImages[0].id);
+    }
     toast.success(`成功添加 ${newImages.length} 张图片`);
   };
 
@@ -125,21 +127,6 @@ export const WatermarkRemover = () => {
     }
   };
 
-  const processAllImages = async () => {
-    const unprocessedImages = images.filter(img => !img.processedUrl && !img.isProcessing);
-    
-    if (unprocessedImages.length === 0) {
-      toast.error("没有需要处理的图片");
-      return;
-    }
-
-    for (const image of unprocessedImages) {
-      await processImage(image.id);
-      // 添加小延迟避免同时处理太多图片
-      await new Promise(resolve => setTimeout(resolve, 500));
-    }
-  };
-
   const downloadImage = (url: string, filename: string) => {
     const link = document.createElement('a');
     link.href = url;
@@ -149,51 +136,22 @@ export const WatermarkRemover = () => {
     document.body.removeChild(link);
   };
 
-  const downloadAllProcessed = () => {
-    const processedImages = images.filter(img => img.processedUrl);
-    
-    if (processedImages.length === 0) {
-      toast.error("没有已处理的图片可下载");
-      return;
-    }
-
-    processedImages.forEach((image, index) => {
-      setTimeout(() => {
-        downloadImage(image.processedUrl!, image.originalFile.name);
-      }, index * 500);
-    });
-
-    toast.success(`开始下载 ${processedImages.length} 张图片`);
-  };
-
   const removeImage = (imageId: string) => {
     setImages(prev => prev.filter(img => img.id !== imageId));
-    setShowOriginal(prev => {
-      const newState = { ...prev };
-      delete newState[imageId];
-      return newState;
-    });
+    if (selectedImageId === imageId) {
+      const remainingImages = images.filter(img => img.id !== imageId);
+      setSelectedImageId(remainingImages.length > 0 ? remainingImages[0].id : null);
+    }
   };
 
-  const clearAll = () => {
-    setImages([]);
-    setShowOriginal({});
-    toast.success("已清空所有图片");
-  };
-
-  const toggleImageView = (imageId: string) => {
-    setShowOriginal(prev => ({
-      ...prev,
-      [imageId]: !prev[imageId]
-    }));
-  };
+  const selectedImage = selectedImageId ? images.find(img => img.id === selectedImageId) : null;
 
   return (
-    <div className="max-w-6xl mx-auto">
+    <div className="max-w-7xl mx-auto">
       {/* 上传区域 */}
       <Card className="mb-8 border-2 border-dashed border-blue-300 bg-white/5 backdrop-blur-lg">
         <div
-          className={`p-12 text-center transition-colors ${
+          className={`p-8 text-center transition-colors ${
             dragActive ? 'bg-blue-500/20' : 'hover:bg-white/5'
           }`}
           onDragEnter={handleDrag}
@@ -201,11 +159,11 @@ export const WatermarkRemover = () => {
           onDragOver={handleDrag}
           onDrop={handleDrop}
         >
-          <Upload className="mx-auto h-16 w-16 text-blue-400 mb-4" />
-          <h3 className="text-2xl font-semibold text-white mb-2">
+          <Upload className="mx-auto h-12 w-12 text-blue-400 mb-4" />
+          <h3 className="text-xl font-semibold text-white mb-2">
             拖拽图片到此处或点击上传
           </h3>
-          <p className="text-blue-200 mb-6">
+          <p className="text-blue-200 mb-4">
             支持 JPG、PNG、WebP 格式，可同时上传多张图片
           </p>
           <Button 
@@ -225,52 +183,146 @@ export const WatermarkRemover = () => {
         </div>
       </Card>
 
-      {/* 操作按钮 */}
-      {images.length > 0 && (
-        <div className="mb-8 flex flex-wrap gap-4 justify-center">
-          <Button 
-            onClick={processAllImages}
-            className="bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600"
-            disabled={images.every(img => img.isProcessing || img.processedUrl)}
-          >
-            批量处理全部
-          </Button>
-          <Button 
-            onClick={downloadAllProcessed}
-            variant="outline"
-            className="border-white/30 text-white hover:bg-white/10"
-            disabled={!images.some(img => img.processedUrl)}
-          >
-            <Download className="w-4 h-4 mr-2" />
-            下载全部
-          </Button>
-          <Button 
-            onClick={clearAll}
-            variant="outline"
-            className="border-red-300 text-red-300 hover:bg-red-500/10"
-          >
-            <Trash2 className="w-4 h-4 mr-2" />
-            清空全部
-          </Button>
+      {images.length > 0 ? (
+        <div className="grid grid-cols-12 gap-6">
+          {/* 左侧：图片列表和控制区域 */}
+          <div className="col-span-12 lg:col-span-4">
+            {/* 图片列表 */}
+            <Card className="mb-4 bg-white/10 backdrop-blur-lg border border-white/20">
+              <div className="p-4">
+                <h3 className="text-white font-semibold mb-4">图片列表</h3>
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {images.map((image) => (
+                    <div
+                      key={image.id}
+                      className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors ${
+                        selectedImageId === image.id 
+                          ? 'bg-blue-500/30 border border-blue-400' 
+                          : 'bg-white/5 hover:bg-white/10'
+                      }`}
+                      onClick={() => setSelectedImageId(image.id)}
+                    >
+                      <img
+                        src={image.originalUrl}
+                        alt={image.originalFile.name}
+                        className="w-12 h-12 object-cover rounded"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white text-sm truncate">{image.originalFile.name}</p>
+                        <p className="text-blue-200 text-xs">
+                          {image.processedUrl ? '已处理' : image.isProcessing ? '处理中...' : '待处理'}
+                        </p>
+                      </div>
+                      <Button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removeImage(image.id);
+                        }}
+                        size="sm"
+                        variant="outline"
+                        className="border-red-300 text-red-300 hover:bg-red-500/10"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </Card>
+
+            {/* 操作按钮 */}
+            {selectedImage && (
+              <Card className="bg-white/10 backdrop-blur-lg border border-white/20">
+                <div className="p-4 space-y-3">
+                  {!selectedImage.processedUrl && !selectedImage.isProcessing && (
+                    <Button
+                      onClick={() => processImage(selectedImage.id)}
+                      className="w-full bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600"
+                    >
+                      去除水印
+                    </Button>
+                  )}
+                  
+                  {selectedImage.processedUrl && (
+                    <Button
+                      onClick={() => downloadImage(selectedImage.processedUrl!, selectedImage.originalFile.name)}
+                      className="w-full bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600"
+                    >
+                      <Download className="w-4 h-4 mr-2" />
+                      下载处理后图片
+                    </Button>
+                  )}
+                </div>
+              </Card>
+            )}
+          </div>
+
+          {/* 右侧：图片对比显示区域 */}
+          <div className="col-span-12 lg:col-span-8">
+            {selectedImage && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* 原图 */}
+                <Card className="bg-white/10 backdrop-blur-lg border border-white/20">
+                  <div className="p-4">
+                    <h4 className="text-white font-semibold mb-3 flex items-center">
+                      <Eye className="w-4 h-4 mr-2" />
+                      原图
+                    </h4>
+                    <div className="aspect-square relative">
+                      <img
+                        src={selectedImage.originalUrl}
+                        alt="原图"
+                        className="w-full h-full object-contain rounded-lg"
+                      />
+                    </div>
+                  </div>
+                </Card>
+
+                {/* 处理后图片 */}
+                <Card className="bg-white/10 backdrop-blur-lg border border-white/20">
+                  <div className="p-4">
+                    <h4 className="text-white font-semibold mb-3 flex items-center">
+                      <EyeOff className="w-4 h-4 mr-2" />
+                      处理后
+                    </h4>
+                    <div className="aspect-square relative">
+                      {selectedImage.isProcessing && (
+                        <div className="absolute inset-0 bg-black/50 flex items-center justify-center rounded-lg">
+                          <div className="bg-white/90 rounded-lg p-4 text-center min-w-[200px]">
+                            <div className="text-sm font-medium text-gray-800 mb-2">
+                              正在去除水印...
+                            </div>
+                            <Progress value={selectedImage.progress} className="w-full" />
+                            <div className="text-xs text-gray-600 mt-1">
+                              {selectedImage.progress}%
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      
+                      <img
+                        src={selectedImage.processedUrl || selectedImage.originalUrl}
+                        alt="处理后"
+                        className={`w-full h-full object-contain rounded-lg ${
+                          selectedImage.isProcessing ? 'opacity-50' : ''
+                        }`}
+                      />
+                      
+                      {!selectedImage.processedUrl && !selectedImage.isProcessing && (
+                        <div className="absolute inset-0 bg-black/20 flex items-center justify-center rounded-lg">
+                          <div className="text-white text-center">
+                            <p className="text-sm">点击"去除水印"开始处理</p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </Card>
+              </div>
+            )}
+          </div>
         </div>
-      )}
-
-      {/* 图片列表 */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {images.map((image) => (
-          <ProcessedImage
-            key={image.id}
-            image={image}
-            showOriginal={showOriginal[image.id] || false}
-            onProcess={() => processImage(image.id)}
-            onRemove={() => removeImage(image.id)}
-            onDownload={() => downloadImage(image.processedUrl!, image.originalFile.name)}
-            onToggleView={() => toggleImageView(image.id)}
-          />
-        ))}
-      </div>
-
-      {images.length === 0 && (
+      ) : (
         <div className="text-center py-16">
           <div className="text-6xl mb-4">🖼️</div>
           <h3 className="text-2xl font-semibold text-white mb-2">
