@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { Upload, Download, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
+import { Upload, Download, ZoomIn, ZoomOut, RotateCcw, Play } from 'lucide-react';
 import { toast } from 'sonner';
 import { AdvancedWatermarkProcessor } from './AdvancedWatermarkProcessor';
 
@@ -165,22 +165,50 @@ const WatermarkRemover = () => {
               {images.map(image => (
                 <div
                   key={image.id}
-                  className={`flex items-center justify-between p-2 border rounded-md cursor-pointer ${selectedImageId === image.id ? 'bg-gray-100' : ''}`}
+                  className={`flex items-center justify-between p-3 border rounded-md cursor-pointer transition-colors ${selectedImageId === image.id ? 'bg-blue-50 border-blue-200' : 'hover:bg-gray-50'}`}
                   onClick={() => handleImageClick(image.id)}
                 >
-                  <span>{image.file.name}</span>
-                  <div className="flex space-x-2">
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={() => handleRemoveWatermark(image)}
-                      disabled={isProcessing}
-                    >
-                      <Download className="h-4 w-4" />
-                    </Button>
+                  <div className="flex-1 min-w-0">
+                    <span className="text-sm font-medium truncate block">{image.file.name}</span>
+                    <span className="text-xs text-gray-500">
+                      {image.dimensions ? `${image.dimensions.width}×${image.dimensions.height}` : '加载中...'}
+                    </span>
+                  </div>
+                  <div className="flex space-x-2 ml-2">
+                    {!image.processedUrl ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRemoveWatermark(image);
+                        }}
+                        disabled={isProcessing}
+                        className="flex items-center space-x-1"
+                      >
+                        <Play className="h-3 w-3" />
+                        <span>处理</span>
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDownload(image);
+                        }}
+                        className="flex items-center space-x-1"
+                      >
+                        <Download className="h-3 w-3" />
+                        <span>下载</span>
+                      </Button>
+                    )}
                   </div>
                 </div>
               ))}
+              {images.length === 0 && (
+                <p className="text-gray-500 text-center py-4">暂无上传的图片</p>
+              )}
             </div>
           </CardContent>
         </Card>
