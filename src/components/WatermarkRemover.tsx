@@ -80,6 +80,8 @@ const WatermarkRemover = () => {
   const [isBatchDownloadOpen, setIsBatchDownloadOpen] = useState(false);
   const [isBatchProcessing, setIsBatchProcessing] = useState(false);
   const [batchProgress, setBatchProgress] = useState<{[key: string]: number}>({});
+  const [apiKey, setApiKey] = useState<string>('');
+  const [isApiDialogOpen, setIsApiDialogOpen] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const originalScrollRef = useRef<HTMLDivElement>(null);
   const processedScrollRef = useRef<HTMLDivElement>(null);
@@ -90,6 +92,15 @@ const WatermarkRemover = () => {
       setSelectedImageId(images[0].id);
     }
   }, [images, selectedImageId]);
+
+  // Load API key from localStorage on component mount
+  useEffect(() => {
+    const savedApiKey = localStorage.getItem('sd-api-key');
+    if (savedApiKey) {
+      setApiKey(savedApiKey);
+    }
+  }, []);
+
   const loadImageDimensions = (file: File): Promise<{
     width: number;
     height: number;
@@ -797,7 +808,7 @@ const WatermarkRemover = () => {
         // Use SD Inpainting algorithm if selected
         if (processingAlgorithm === 'sd-inpainting' && mark) {
           console.log('使用Stable Diffusion Inpainting算法处理');
-          const processedBlob = await processWithSDInpainting(imageFile, mark);
+          const processedBlob = await processWithSDInpainting(imageFile, mark, apiKey);
           resolve(processedBlob);
           return;
         }
@@ -1308,6 +1319,57 @@ const WatermarkRemover = () => {
 
     return buttonContent;
   };
+
+  // API配置对话框
+  const renderApiConfigDialog = () => (
+    <Dialog open={isApiDialogOpen} onOpenChange={setIsApiDialogOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm" className="h-8 w-8 p-0 ml-1">
+          <Settings className="h-4 w-4" />
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-[425px]">
+        <DialogHeader>
+          <DialogTitle>AI智能填充 API 配置</DialogTitle>
+          <DialogDescription>
+            配置Stable Diffusion API密钥以使用AI智能填充功能
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-4 py-4">
+          <div className="grid grid-cols-4 items-center gap-4">
+            <Label htmlFor="apiKey" className="text-right">
+              API Key
+            </Label>
+            <Input
+              id="apiKey"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              className="col-span-3"
+              placeholder="输入您的API密钥"
+              type="password"
+            />
+          </div>
+          <div className="text-sm text-gray-600">
+            <p>• 需要Stable Diffusion API密钥</p>
+            <p>• 密钥将保存在本地存储中</p>
+            <p>• 用于AI智能图像修复和填充</p>
+          </div>
+        </div>
+        <div className="flex justify-end space-x-2">
+          <Button variant="outline" onClick={() => setIsApiDialogOpen(false)}>
+            取消
+          </Button>
+          <Button onClick={() => {
+            localStorage.setItem('sd-api-key', apiKey);
+            toast.success('API密钥已保存');
+            setIsApiDialogOpen(false);
+          }}>
+            保存
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
 
   return <div className="h-full flex">
       {/* Left Sidebar */}
