@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Slider } from '@/components/ui/slider';
 import { Upload, Download, Trash2, MapPin, RefreshCw, Settings, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -30,6 +31,7 @@ const WatermarkRemover = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isMarkingMode, setIsMarkingMode] = useState(false);
   const [processingAlgorithm, setProcessingAlgorithm] = useState<'enhanced' | 'conservative' | 'aggressive'>('enhanced');
+  const [markRadius, setMarkRadius] = useState(0.05);
   const [originalZoom, setOriginalZoom] = useState<number>(1);
   const [processedZoom, setProcessedZoom] = useState<number>(1);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -84,7 +86,7 @@ const WatermarkRemover = () => {
               ...img,
               watermarkMarks: [
                 ...(img.watermarkMarks || []),
-                { x, y, radius: 0.05 }
+                { x, y, radius: markRadius }
               ]
             }
           : img
@@ -344,9 +346,7 @@ const WatermarkRemover = () => {
               if (isInMarkedWatermarkArea(normalizedX, normalizedY, marks)) {
                 confidence = 0.9;
               }
-            }
-            
-            if (confidence === 0) {
+            } else {
               confidence = detectWatermark(data, x, y, canvas.width, canvas.height);
             }
             
@@ -523,6 +523,8 @@ const WatermarkRemover = () => {
     ));
   };
 
+  const selectedImage = images.find(img => img.id === selectedImageId);
+
   return (
     <div className="h-full flex flex-col">
       {progress > 0 && isProcessing && (
@@ -586,6 +588,22 @@ const WatermarkRemover = () => {
                 <MapPin className="h-4 w-4 mr-2" />
                 {isMarkingMode ? '退出标记模式' : '手动标记水印'}
               </Button>
+              {isMarkingMode && (
+                <div className="space-y-2 pt-2 border-t mt-2">
+                  <label htmlFor="mark-radius" className="text-sm font-medium flex justify-between items-center">
+                    <span>标记半径</span>
+                    <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">{(markRadius * 100).toFixed(0)}%</span>
+                  </label>
+                  <Slider
+                    id="mark-radius"
+                    min={1}
+                    max={25}
+                    step={1}
+                    value={[markRadius * 100]}
+                    onValueChange={(value) => setMarkRadius(value[0] / 100)}
+                  />
+                </div>
+              )}
             </div>
             
             <div className="flex flex-col space-y-2 flex-1 overflow-y-auto">
@@ -640,21 +658,21 @@ const WatermarkRemover = () => {
             {images.length > 0 ? (
               <div className="flex-1 min-h-0 overflow-y-auto">
                 <div className="space-y-6">
-                  {images.map(image => (
+                  {selectedImage ? (
                     <div
-                      key={image.id}
+                      key={selectedImage.id}
                       className="bg-white rounded-lg border p-4 space-y-4"
                     >
                       <div className="flex items-center justify-between">
-                        <h3 className="font-medium text-sm truncate" title={image.file.name}>
-                          {image.file.name}
+                        <h3 className="font-medium text-sm truncate" title={selectedImage.file.name}>
+                          {selectedImage.file.name}
                         </h3>
                         <div className="flex items-center space-x-2">
-                          {image.watermarkMarks && image.watermarkMarks.length > 0 && (
+                          {selectedImage.watermarkMarks && selectedImage.watermarkMarks.length > 0 && (
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => clearWatermarkMarks(image.id)}
+                              onClick={() => clearWatermarkMarks(selectedImage.id)}
                               className="text-xs"
                             >
                               清除标记
@@ -663,18 +681,18 @@ const WatermarkRemover = () => {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => handleRemoveWatermark(image)}
+                            onClick={() => handleRemoveWatermark(selectedImage)}
                             disabled={isProcessing}
                             className="text-xs"
                           >
                             <RefreshCw className="h-3 w-3 mr-1" />
-                            {isProcessing && selectedImageId === image.id ? '处理中...' : (image.processCount > 0 ? '继续处理' : '去水印')}
+                            {isProcessing && selectedImageId === selectedImage.id ? '处理中...' : (selectedImage.processCount > 0 ? '继续处理' : '去水印')}
                           </Button>
-                          {image.processedUrl && (
+                          {selectedImage.processedUrl && (
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => handleDownload(image)}
+                              onClick={() => handleDownload(selectedImage)}
                               className="text-xs"
                             >
                               <Download className="h-3 w-3 mr-1" />
@@ -684,7 +702,7 @@ const WatermarkRemover = () => {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => handleRemoveImage(image.id)}
+                            onClick={() => handleRemoveImage(selectedImage.id)}
                             className="text-xs"
                           >
                             <Trash2 className="h-3 w-3" />
@@ -731,16 +749,16 @@ const WatermarkRemover = () => {
                               <div className="w-full h-full flex items-center justify-center p-2">
                                 <div className="relative">
                                   <img
-                                    src={image.url}
+                                    src={selectedImage.url}
                                     alt="原图"
                                     className="cursor-pointer block max-w-full max-h-full object-contain"
                                     style={{
                                       transform: `scale(${originalZoom})`,
                                       transformOrigin: 'center center'
                                     }}
-                                    onClick={(e) => handleImageClick(e, image.id)}
+                                    onClick={(e) => handleImageClick(e, selectedImage.id)}
                                   />
-                                  {renderWatermarkMarks(image.watermarkMarks, image.id)}
+                                  {renderWatermarkMarks(selectedImage.watermarkMarks, selectedImage.id)}
                                 </div>
                               </div>
                             </ScrollArea>
@@ -756,7 +774,7 @@ const WatermarkRemover = () => {
                                 size="sm"
                                 onClick={handleProcessedZoomOut}
                                 className="h-6 w-6 p-0"
-                                disabled={!image.processedUrl}
+                                disabled={!selectedImage.processedUrl}
                               >
                                 <ZoomOut className="h-3 w-3" />
                               </Button>
@@ -765,7 +783,7 @@ const WatermarkRemover = () => {
                                 size="sm"
                                 onClick={resetProcessedZoom}
                                 className="h-6 px-2 text-xs"
-                                disabled={!image.processedUrl}
+                                disabled={!selectedImage.processedUrl}
                               >
                                 <RotateCcw className="h-3 w-3" />
                               </Button>
@@ -774,32 +792,36 @@ const WatermarkRemover = () => {
                                 size="sm"
                                 onClick={handleProcessedZoomIn}
                                 className="h-6 w-6 p-0"
-                                disabled={!image.processedUrl}
+                                disabled={!selectedImage.processedUrl}
                               >
                                 <ZoomIn className="h-3 w-3" />
                               </Button>
                             </div>
                           </div>
                           <div className="relative bg-gray-50 rounded-lg overflow-hidden aspect-video">
-                            {image.processedUrl ? (
+                            {selectedImage.processedUrl ? (
                               <ScrollArea className="w-full h-full">
                                 <div className="w-full h-full flex items-center justify-center p-2">
                                   <div className="relative">
                                     <img
-                                      src={image.processedUrl}
+                                      src={selectedImage.processedUrl}
                                       alt="处理后"
-                                      className="block max-w-full max-h-full object-contain"
+                                      className={`block max-w-full max-h-full object-contain ${isMarkingMode ? 'cursor-pointer' : ''}`}
                                       style={{
                                         transform: `scale(${processedZoom})`,
                                         transformOrigin: 'center center'
                                       }}
+                                      onClick={(e) => {
+                                        if (isMarkingMode) handleImageClick(e, selectedImage.id);
+                                      }}
                                     />
+                                    {isMarkingMode && renderWatermarkMarks(selectedImage.watermarkMarks, selectedImage.id)}
                                   </div>
                                 </div>
                               </ScrollArea>
                             ) : (
                               <div className="w-full h-full flex items-center justify-center text-gray-400 text-sm">
-                                {isProcessing && selectedImageId === image.id ? (
+                                {isProcessing && selectedImageId === selectedImage.id ? (
                                   <div className="text-center">
                                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-2"></div>
                                     <div className="text-xs">正在处理...</div>
@@ -813,7 +835,11 @@ const WatermarkRemover = () => {
                         </div>
                       </div>
                     </div>
-                  ))}
+                  ) : (
+                    <div className="flex items-center justify-center h-full text-gray-500">
+                      <p>请从左侧列表中选择一张图片进行处理</p>
+                    </div>
+                  )}
                 </div>
               </div>
             ) : (
