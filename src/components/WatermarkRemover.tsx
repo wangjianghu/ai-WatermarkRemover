@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -42,8 +41,8 @@ const WatermarkRemover = () => {
   const [isMarkingMode, setIsMarkingMode] = useState(false);
   const [processingAlgorithm, setProcessingAlgorithm] = useState<'enhanced' | 'conservative' | 'aggressive'>('enhanced');
   const [markRadius, setMarkRadius] = useState(0.05);
-  const [originalZoom, setOriginalZoom] = useState<number>(1);
-  const [processedZoom, setProcessedZoom] = useState<number>(1);
+  const [zoom, setZoom] = useState<number>(1);
+  const [scrollPosition, setScrollPosition] = useState({ x: 0, y: 0 });
   const [dragState, setDragState] = useState<DragState>({
     isDragging: false,
     startX: 0,
@@ -52,6 +51,8 @@ const WatermarkRemover = () => {
     currentY: 0
   });
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const originalScrollRef = useRef<HTMLDivElement>(null);
+  const processedScrollRef = useRef<HTMLDivElement>(null);
 
   const loadImageDimensions = (file: File): Promise<{ width: number; height: number }> => {
     return new Promise((resolve) => {
@@ -88,6 +89,15 @@ const WatermarkRemover = () => {
       event.target.value = '';
     }
   };
+
+  const syncScroll = useCallback((source: 'original' | 'processed', scrollLeft: number, scrollTop: number) => {
+    const targetRef = source === 'original' ? processedScrollRef : originalScrollRef;
+    if (targetRef.current) {
+      targetRef.current.scrollLeft = scrollLeft;
+      targetRef.current.scrollTop = scrollTop;
+    }
+    setScrollPosition({ x: scrollLeft, y: scrollTop });
+  }, []);
 
   const handleMouseDown = useCallback((event: React.MouseEvent<HTMLImageElement>, imageId: string) => {
     if (!isMarkingMode) return;
@@ -561,28 +571,16 @@ const WatermarkRemover = () => {
     });
   };
 
-  const handleOriginalZoomIn = () => {
-    setOriginalZoom(prev => Math.min(prev * 1.2, 5));
+  const handleZoomIn = () => {
+    setZoom(prev => Math.min(prev * 1.2, 5));
   };
 
-  const handleOriginalZoomOut = () => {
-    setOriginalZoom(prev => Math.max(prev / 1.2, 0.1));
+  const handleZoomOut = () => {
+    setZoom(prev => Math.max(prev / 1.2, 0.1));
   };
 
-  const handleProcessedZoomIn = () => {
-    setProcessedZoom(prev => Math.min(prev * 1.2, 5));
-  };
-
-  const handleProcessedZoomOut = () => {
-    setProcessedZoom(prev => Math.max(prev / 1.2, 0.1));
-  };
-
-  const resetOriginalZoom = () => {
-    setOriginalZoom(1);
-  };
-
-  const resetProcessedZoom = () => {
-    setProcessedZoom(1);
+  const resetZoom = () => {
+    setZoom(1);
   };
 
   const renderWatermarkMarks = (marks: WatermarkMark[] = []) => {
@@ -604,15 +602,19 @@ const WatermarkRemover = () => {
     if (!isMarkingMode || !dragState.isDragging) return null;
 
     const { startX, startY, currentX, currentY } = dragState;
+    const left = Math.min(startX, currentX);
+    const top = Math.min(startY, currentY);
+    const width = Math.abs(currentX - startX);
+    const height = Math.abs(currentY - startY);
     
     return (
       <div
         className="absolute border-2 border-blue-500 bg-blue-500 bg-opacity-20 pointer-events-none"
         style={{
-          left: `${startX * 100}%`,
-          top: `${startY * 100}%`,
-          width: `${(currentX - startX) * 100}%`,
-          height: `${(currentY - startY) * 100}%`,
+          left: `${left * 100}%`,
+          top: `${top * 100}%`,
+          width: `${width * 100}%`,
+          height: `${height * 100}%`,
         }}
       />
     );
@@ -625,7 +627,52 @@ const WatermarkRemover = () => {
       {/* Left Sidebar */}
       <div className="w-80 flex-shrink-0 border-r bg-white">
         <div className="h-full flex flex-col p-4">
-          {/* ... keep existing code (progress bar, header, algorithm selection) */}
+          {/* Progress Bar */}
+          {isProcessing && (
+            <div className="mb-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium">处理进度</span>
+                <span className="text-sm text-gray-500">{progress}%</span>
+              </div>
+              <Progress value={progress} className="w-full" />
+            </div>
+          )}
+
+          {/* Upload Section */}
+          <div className="space-y-4 flex-shrink-0">
+            <div className="text-center">
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={handleFileUpload}
+                className="hidden"
+                id="file-upload"
+              />
+              <label htmlFor="file-upload">
+                <Button variant="outline" className="w-full" asChild>
+                  <span className="cursor-pointer">
+                    <Upload className="h-4 w-4 mr-2" />
+                    上传图片
+                  </span>
+                </Button>
+              </label>
+            </div>
+
+            {/* Algorithm Selection */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">处理算法</label>
+              <select
+                value={processingAlgorithm}
+                onChange={(e) => setProcessingAlgorithm(e.target.value as any)}
+                className="w-full p-2 border rounded-md text-sm"
+              >
+                <option value="enhanced">增强模式</option>
+                <option value="conservative">保守模式</option>
+                <option value="aggressive">激进模式</option>
+              </select>
+            </div>
+          </div>
           
           <ScrollArea className="flex-1">
             <div className="space-y-2">
@@ -670,7 +717,14 @@ const WatermarkRemover = () => {
       {/* Main Content Area - Full Screen */}
       <div className="flex-1 flex flex-col bg-gray-50 min-w-0">
         <div className="flex items-center justify-between p-4 bg-white border-b flex-shrink-0">
-          <h2 className="text-lg font-semibold">图片处理结果</h2>
+          <div className="flex items-center space-x-4">
+            <h2 className="text-lg font-semibold">图片处理结果</h2>
+            {selectedImage && (
+              <span className="text-sm text-gray-500">
+                缩放: {Math.round(zoom * 100)}%
+              </span>
+            )}
+          </div>
           {selectedImage && (
             <div className="flex items-center space-x-2">
               <Button
@@ -746,7 +800,7 @@ const WatermarkRemover = () => {
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={handleOriginalZoomOut}
+                    onClick={handleZoomOut}
                     className="h-6 w-6 p-0"
                   >
                     <ZoomOut className="h-3 w-3" />
@@ -754,7 +808,7 @@ const WatermarkRemover = () => {
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={resetOriginalZoom}
+                    onClick={resetZoom}
                     className="h-6 px-2 text-xs"
                   >
                     <RotateCcw className="h-3 w-3" />
@@ -762,14 +816,21 @@ const WatermarkRemover = () => {
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={handleOriginalZoomIn}
+                    onClick={handleZoomIn}
                     className="h-6 w-6 p-0"
                   >
                     <ZoomIn className="h-3 w-3" />
                   </Button>
                 </div>
               </div>
-              <div className="flex-1 relative bg-white rounded-lg border overflow-auto min-h-0">
+              <div 
+                ref={originalScrollRef}
+                className="flex-1 relative bg-white rounded-lg border overflow-auto min-h-0"
+                onScroll={(e) => {
+                  const target = e.target as HTMLDivElement;
+                  syncScroll('original', target.scrollLeft, target.scrollTop);
+                }}
+              >
                 <div className="p-4 flex items-center justify-center min-h-full">
                   <div className="relative">
                     <img
@@ -779,7 +840,7 @@ const WatermarkRemover = () => {
                         isMarkingMode ? 'cursor-crosshair' : ''
                       }`}
                       style={{
-                        transform: `scale(${originalZoom})`,
+                        transform: `scale(${zoom})`,
                         transformOrigin: 'center center'
                       }}
                       onMouseDown={(e) => handleMouseDown(e, selectedImage.id)}
@@ -802,7 +863,7 @@ const WatermarkRemover = () => {
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={handleProcessedZoomOut}
+                    onClick={handleZoomOut}
                     className="h-6 w-6 p-0"
                     disabled={!selectedImage.processedUrl}
                   >
@@ -811,7 +872,7 @@ const WatermarkRemover = () => {
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={resetProcessedZoom}
+                    onClick={resetZoom}
                     className="h-6 px-2 text-xs"
                     disabled={!selectedImage.processedUrl}
                   >
@@ -820,7 +881,7 @@ const WatermarkRemover = () => {
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={handleProcessedZoomIn}
+                    onClick={handleZoomIn}
                     className="h-6 w-6 p-0"
                     disabled={!selectedImage.processedUrl}
                   >
@@ -828,7 +889,14 @@ const WatermarkRemover = () => {
                   </Button>
                 </div>
               </div>
-              <div className="flex-1 relative bg-white rounded-lg border overflow-auto min-h-0">
+              <div 
+                ref={processedScrollRef}
+                className="flex-1 relative bg-white rounded-lg border overflow-auto min-h-0"
+                onScroll={(e) => {
+                  const target = e.target as HTMLDivElement;
+                  syncScroll('processed', target.scrollLeft, target.scrollTop);
+                }}
+              >
                 {selectedImage.processedUrl ? (
                   <div className="p-4 flex items-center justify-center min-h-full">
                     <div className="relative">
@@ -839,7 +907,7 @@ const WatermarkRemover = () => {
                           isMarkingMode ? 'cursor-crosshair' : ''
                         }`}
                         style={{
-                          transform: `scale(${processedZoom})`,
+                          transform: `scale(${zoom})`,
                           transformOrigin: 'center center'
                         }}
                         onMouseDown={(e) => handleMouseDown(e, selectedImage.id)}
