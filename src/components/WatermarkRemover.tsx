@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
 import { Upload, Download, Trash2, Eye, EyeOff, Play } from "lucide-react";
-import { NeuralWatermarkRemover } from './NeuralWatermarkRemover';
+import { OptimizedWatermarkProcessor } from './OptimizedWatermarkProcessor';
 
 interface ProcessedImageData {
   id: string;
@@ -18,18 +18,8 @@ interface ProcessedImageData {
 export const WatermarkRemover = () => {
   const [images, setImages] = useState<ProcessedImageData[]>([]);
   const [dragActive, setDragActive] = useState(false);
-  const [neuralProcessor, setNeuralProcessor] = useState<NeuralWatermarkRemover | null>(null);
+  const [processor] = useState(() => new OptimizedWatermarkProcessor());
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // 初始化神经网络处理器
-  const initializeNeuralProcessor = async () => {
-    if (!neuralProcessor) {
-      const processor = new NeuralWatermarkRemover();
-      setNeuralProcessor(processor);
-      return processor;
-    }
-    return neuralProcessor;
-  };
 
   const handleFiles = (files: FileList) => {
     const newImages: ProcessedImageData[] = [];
@@ -81,6 +71,9 @@ export const WatermarkRemover = () => {
   };
 
   const processImage = async (imageId: string) => {
+    const image = images.find(img => img.id === imageId);
+    if (!image) return;
+
     setImages(prev => prev.map(img => img.id === imageId ? {
       ...img,
       isProcessing: true,
@@ -88,33 +81,17 @@ export const WatermarkRemover = () => {
     } : img));
 
     try {
-      // 显示神经网络初始化进度
-      setImages(prev => prev.map(img => img.id === imageId ? {
-        ...img,
-        progress: 10
-      } : img));
+      toast.info("开始优化处理，使用高性能算法");
 
-      const processor = await initializeNeuralProcessor();
-      
-      setImages(prev => prev.map(img => img.id === imageId ? {
-        ...img,
-        progress: 30
-      } : img));
-
-      const image = images.find(img => img.id === imageId);
-      if (!image) return;
-
-      // 显示处理进度
-      const progressInterval = setInterval(() => {
-        setImages(prev => prev.map(img => img.id === imageId ? {
-          ...img,
-          progress: Math.min(img.progress + 10, 90)
-        } : img));
-      }, 500);
-
-      // 使用神经网络处理
-      const processedBlob = await processor.removeWatermark(image.originalFile);
-      clearInterval(progressInterval);
+      const processedBlob = await processor.removeWatermark(
+        image.originalFile,
+        (progress) => {
+          setImages(prev => prev.map(img => img.id === imageId ? {
+            ...img,
+            progress: progress
+          } : img));
+        }
+      );
 
       const processedUrl = URL.createObjectURL(processedBlob);
 
@@ -125,15 +102,20 @@ export const WatermarkRemover = () => {
         progress: 100
       } : img));
 
-      toast.success("神经网络水印去除完成！效果显著提升");
+      toast.success("高性能水印去除完成！页面响应已优化");
     } catch (error) {
-      console.error("神经网络处理失败:", error);
+      console.error("处理失败:", error);
       setImages(prev => prev.map(img => img.id === imageId ? {
         ...img,
         isProcessing: false,
         progress: 0
       } : img));
-      toast.error("处理失败，请重试");
+      
+      if (error instanceof Error && error.message.includes('正忙')) {
+        toast.error("处理器正忙，请稍后再试");
+      } else {
+        toast.error("处理失败，请重试");
+      }
     }
   };
 
@@ -171,6 +153,9 @@ export const WatermarkRemover = () => {
           </h3>
           <p className="text-blue-200 mb-4">
             支持 JPG、PNG、WebP 格式，可批量上传
+          </p>
+          <p className="text-green-300 text-sm mb-4">
+            ✨ 已优化：高性能处理，避免页面卡顿
           </p>
           <Button
             onClick={() => fileInputRef.current?.click()}
@@ -219,7 +204,7 @@ export const WatermarkRemover = () => {
                                 ? 'bg-yellow-500/80 text-white'
                                 : 'bg-gray-500/80 text-white'
                           }`}>
-                            {image.processedUrl ? '已处理' : image.isProcessing ? '处理中' : '待处理'}
+                            {image.processedUrl ? '已处理' : image.isProcessing ? '高速处理中' : '待处理'}
                           </span>
                         </div>
 
@@ -228,11 +213,14 @@ export const WatermarkRemover = () => {
                           <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
                             <div className="bg-white/90 rounded-lg p-3 text-center min-w-[150px]">
                               <div className="text-sm font-medium text-gray-800 mb-2">
-                                处理中...
+                                高性能处理中...
                               </div>
                               <Progress value={image.progress} className="w-full h-2" />
                               <div className="text-xs text-gray-600 mt-1">
                                 {image.progress}%
+                              </div>
+                              <div className="text-xs text-green-600 mt-1">
+                                页面保持响应
                               </div>
                             </div>
                           </div>
@@ -254,6 +242,7 @@ export const WatermarkRemover = () => {
                             size="sm"
                             variant="outline"
                             className="border-red-300 text-red-300 hover:bg-red-500/10"
+                            disabled={image.isProcessing}
                           >
                             <Trash2 className="w-3 h-3" />
                           </Button>
@@ -295,7 +284,7 @@ export const WatermarkRemover = () => {
                           {/* 成功标识 */}
                           <div className="absolute top-2 left-2">
                             <span className="px-2 py-1 text-xs rounded-full bg-green-500/80 text-white">
-                              已完成
+                              高效完成
                             </span>
                           </div>
 
@@ -321,9 +310,12 @@ export const WatermarkRemover = () => {
                   </div>
                 ) : (
                   <div className="text-center py-12">
-                    <div className="text-4xl mb-3">🔄</div>
+                    <div className="text-4xl mb-3">⚡</div>
                     <p className="text-white/60 text-sm">
-                      处理完成的图片将显示在这里
+                      高性能处理完成的图片将显示在这里
+                    </p>
+                    <p className="text-green-400/60 text-xs mt-1">
+                      优化算法，页面不卡顿
                     </p>
                   </div>
                 )}
@@ -333,12 +325,12 @@ export const WatermarkRemover = () => {
         </div>
       ) : (
         <div className="text-center py-16">
-          <div className="text-6xl mb-4">🖼️</div>
+          <div className="text-6xl mb-4">🚀</div>
           <h3 className="text-2xl font-semibold text-white mb-2">
-            开始使用AI水印去除工具
+            高性能AI水印去除工具
           </h3>
           <p className="text-blue-200">
-            上传您的图片，让AI智能去除水印
+            优化算法，快速处理，页面始终保持响应
           </p>
         </div>
       )}
