@@ -135,7 +135,6 @@ const WatermarkRemover = () => {
 
     const { x, y } = getImageCoordinates(event);
 
-    // Check if clicking on existing mark for selection/resize
     if (selectedImage.watermarkMark) {
       const mark = selectedImage.watermarkMark;
       const handle = getResizeHandle(x, y, mark);
@@ -151,7 +150,6 @@ const WatermarkRemover = () => {
         return;
       }
       
-      // Check if clicking inside mark for moving
       if (x >= mark.x && x <= mark.x + mark.width && y >= mark.y && y <= mark.y + mark.height) {
         setSelectedMark(true);
         setDragState({
@@ -165,7 +163,6 @@ const WatermarkRemover = () => {
       }
     }
 
-    // Clear existing mark and create new one
     setSelectedMark(false);
     setImages(prevImages =>
       prevImages.map(img =>
@@ -183,7 +180,7 @@ const WatermarkRemover = () => {
   }, [isMarkingMode, images]);
 
   const getResizeHandle = (x: number, y: number, mark: WatermarkMark): 'nw' | 'ne' | 'sw' | 'se' | 'n' | 'e' | 's' | 'w' | null => {
-    const handleSize = 0.02; // 2% of image size
+    const handleSize = 0.02;
     const handles = {
       'nw': { x: mark.x, y: mark.y },
       'ne': { x: mark.x + mark.width, y: mark.y },
@@ -261,7 +258,6 @@ const WatermarkRemover = () => {
       }
     } else if (dragState.isDragging) {
       if (selectedMark) {
-        // Moving existing mark
         const selectedImage = images.find(img => img.id === imageId);
         if (selectedImage?.watermarkMark) {
           const mark = selectedImage.watermarkMark;
@@ -277,7 +273,6 @@ const WatermarkRemover = () => {
           );
         }
       } else {
-        // Creating new mark
         setDragState(prev => ({
           ...prev,
           currentX: x,
@@ -358,7 +353,7 @@ const WatermarkRemover = () => {
     toast.success("已还原到原图状态", { duration: 800 });
   };
 
-  // Optimized watermark detection - reduced complexity
+  // Enhanced watermark detection with better red text detection
   const detectWatermark = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number): number => {
     const index = (y * width + x) * 4;
     const r = data[index];
@@ -368,20 +363,30 @@ const WatermarkRemover = () => {
     
     let confidence = 0;
     
+    // Enhanced red text detection
+    if (r > 150 && g < 100 && b < 100) {
+      confidence += 0.6; // High confidence for red pixels
+    }
+    
+    // Orange/yellow text detection (common in watermarks)
+    if (r > 180 && g > 100 && g < 200 && b < 100) {
+      confidence += 0.5;
+    }
+    
     // Alpha transparency check
     if (a < 245) {
-      confidence += 0.4;
+      confidence += 0.3;
     }
     
     // Brightness extremes
     const brightness = (r + g + b) / 3;
     if (brightness > 220 || brightness < 50) {
-      confidence += 0.3;
+      confidence += 0.2;
     }
     
     // Low color variance (typical of watermarks)
     const colorVariance = Math.max(Math.abs(r - g), Math.abs(g - b), Math.abs(r - b));
-    if (colorVariance < 20) {
+    if (colorVariance > 50) { // Text usually has high color variance
       confidence += 0.3;
     }
     
@@ -392,9 +397,10 @@ const WatermarkRemover = () => {
     const normalizedX = x / width;
     const normalizedY = y / height;
     
-    // Common watermark positions get higher weights
-    if (normalizedX > 0.7 && normalizedY > 0.7) return 1.2;
-    if ((normalizedX < 0.3 || normalizedX > 0.7) && (normalizedY < 0.3 || normalizedY > 0.7)) return 1.1;
+    // Bottom right corner (most common for watermarks)
+    if (normalizedX > 0.7 && normalizedY > 0.7) return 1.5;
+    // Other corners
+    if ((normalizedX < 0.3 || normalizedX > 0.7) && (normalizedY < 0.3 || normalizedY > 0.7)) return 1.2;
     return 0.8;
   };
 
@@ -403,11 +409,12 @@ const WatermarkRemover = () => {
     return x >= mark.x && x <= mark.x + mark.width && y >= mark.y && y <= mark.y + mark.height;
   };
 
-  // Simplified pixel repair
+  // Enhanced pixel repair with better blending
   const repairPixel = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number, confidence: number) => {
-    const radius = Math.min(6, Math.max(3, Math.floor(confidence * 5)));
+    const radius = Math.min(8, Math.max(4, Math.floor(confidence * 8))); // Increased radius
     const validPixels: Array<{r: number, g: number, b: number, a: number, weight: number}> = [];
     
+    // Collect pixels in a larger area for better repair
     for (let dy = -radius; dy <= radius; dy++) {
       for (let dx = -radius; dx <= radius; dx++) {
         if (dx === 0 && dy === 0) continue;
@@ -419,9 +426,10 @@ const WatermarkRemover = () => {
           const neighborIndex = (ny * width + nx) * 4;
           const neighborConfidence = detectWatermark(data, nx, ny, width, height);
           
-          if (neighborConfidence < 0.3) {
+          // Only use pixels with very low watermark confidence
+          if (neighborConfidence < 0.2) {
             const distance = Math.sqrt(dx * dx + dy * dy);
-            const weight = 1 / (distance + 0.1);
+            const weight = 1 / (distance * distance + 0.1);
             
             validPixels.push({
               r: data[neighborIndex],
@@ -437,9 +445,9 @@ const WatermarkRemover = () => {
     
     if (validPixels.length === 0) return null;
     
-    // Use top weighted pixels for better performance
+    // Use more pixels for better blending
     validPixels.sort((a, b) => b.weight - a.weight);
-    const useCount = Math.min(8, validPixels.length);
+    const useCount = Math.min(12, validPixels.length);
     
     return weightedAverage(validPixels.slice(0, useCount));
   };
@@ -463,7 +471,7 @@ const WatermarkRemover = () => {
     };
   };
 
-  // Optimized processing function
+  // Enhanced processing function with iterative improvement
   const processImageCanvas = async (imageFile: File, mark?: WatermarkMark, existingProcessedUrl?: string): Promise<Blob> => {
     return new Promise((resolve, reject) => {
       const img = new Image();
@@ -483,85 +491,62 @@ const WatermarkRemover = () => {
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         const data = imageData.data;
         
-        let processedPixels = 0;
-        const watermarkPixels: Array<{x: number, y: number, confidence: number}> = [];
-        
-        // Optimized scanning - skip pixels for performance if no mark is specified
-        const step = mark ? 1 : 2; // Skip every other pixel if no manual mark
-        
-        for (let y = 0; y < canvas.height; y += step) {
-          for (let x = 0; x < canvas.width; x += step) {
-            const normalizedX = x / canvas.width;
-            const normalizedY = y / canvas.height;
-            
-            let confidence = 0;
-            
-            if (mark) {
-              if (isInMarkedWatermarkArea(normalizedX, normalizedY, mark)) {
-                confidence = 0.9; // High confidence for marked areas
-              }
-            } else {
-              confidence = detectWatermark(data, x, y, canvas.width, canvas.height);
-              confidence *= getPositionWeight(x, y, canvas.width, canvas.height);
-            }
-            
-            let threshold = 0.4;
-            if (processingAlgorithm === 'conservative') threshold = 0.6;
-            else if (processingAlgorithm === 'aggressive') threshold = 0.3;
-            
-            if (confidence > threshold) {
-              watermarkPixels.push({x, y, confidence});
-            }
-          }
-        }
-        
-        console.log(`检测到 ${watermarkPixels.length} 个水印像素`);
-        
-        // Sort by confidence for better results
-        watermarkPixels.sort((a, b) => b.confidence - a.confidence);
-        
-        // Process pixels with gradual blending for marked areas
-        watermarkPixels.forEach(({x, y, confidence}) => {
-          const index = (y * canvas.width + x) * 4;
-          const repaired = repairPixel(data, x, y, canvas.width, canvas.height, confidence);
+        // Multiple passes for better watermark removal
+        for (let pass = 0; pass < 3; pass++) {
+          let processedPixels = 0;
+          const watermarkPixels: Array<{x: number, y: number, confidence: number}> = [];
           
-          if (repaired) {
-            // Enhanced blending for marked areas
-            if (mark) {
+          // Scan every pixel for watermarks
+          for (let y = 0; y < canvas.height; y++) {
+            for (let x = 0; x < canvas.width; x++) {
               const normalizedX = x / canvas.width;
               const normalizedY = y / canvas.height;
-              const distanceToEdge = Math.min(
-                Math.abs(normalizedX - mark.x),
-                Math.abs(normalizedX - (mark.x + mark.width)),
-                Math.abs(normalizedY - mark.y),
-                Math.abs(normalizedY - (mark.y + mark.height))
-              );
               
-              const maxBlendDistance = 0.02;
-              const blendFactor = Math.min(1, distanceToEdge / maxBlendDistance);
+              let confidence = 0;
               
-              if (blendFactor < 1) {
-                data[index] = Math.round(data[index] * blendFactor + repaired.r * (1 - blendFactor));
-                data[index + 1] = Math.round(data[index + 1] * blendFactor + repaired.g * (1 - blendFactor));
-                data[index + 2] = Math.round(data[index + 2] * blendFactor + repaired.b * (1 - blendFactor));
-                data[index + 3] = Math.round(data[index + 3] * blendFactor + repaired.a * (1 - blendFactor));
+              if (mark) {
+                if (isInMarkedWatermarkArea(normalizedX, normalizedY, mark)) {
+                  confidence = 0.95; // Very high confidence for marked areas
+                }
               } else {
-                data[index] = repaired.r;
-                data[index + 1] = repaired.g;
-                data[index + 2] = repaired.b;
-                data[index + 3] = repaired.a;
+                confidence = detectWatermark(data, x, y, canvas.width, canvas.height);
+                confidence *= getPositionWeight(x, y, canvas.width, canvas.height);
               }
-            } else {
-              data[index] = repaired.r;
-              data[index + 1] = repaired.g;
-              data[index + 2] = repaired.b;
-              data[index + 3] = repaired.a;
+              
+              let threshold = 0.3; // Lower threshold for more aggressive removal
+              if (processingAlgorithm === 'conservative') threshold = 0.5;
+              else if (processingAlgorithm === 'aggressive') threshold = 0.2;
+              
+              if (confidence > threshold) {
+                watermarkPixels.push({x, y, confidence});
+              }
             }
-            processedPixels++;
           }
-        });
+          
+          console.log(`Pass ${pass + 1}: 检测到 ${watermarkPixels.length} 个水印像素`);
+          
+          // Sort by confidence for better results
+          watermarkPixels.sort((a, b) => b.confidence - a.confidence);
+          
+          // Process pixels with stronger replacement
+          watermarkPixels.forEach(({x, y, confidence}) => {
+            const index = (y * canvas.width + x) * 4;
+            const repaired = repairPixel(data, x, y, canvas.width, canvas.height, confidence);
+            
+            if (repaired) {
+              // More aggressive replacement for persistent watermarks
+              const blendFactor = Math.min(0.9, confidence); // Up to 90% replacement
+              
+              data[index] = Math.round(data[index] * (1 - blendFactor) + repaired.r * blendFactor);
+              data[index + 1] = Math.round(data[index + 1] * (1 - blendFactor) + repaired.g * blendFactor);
+              data[index + 2] = Math.round(data[index + 2] * (1 - blendFactor) + repaired.b * blendFactor);
+              data[index + 3] = Math.round(data[index + 3] * (1 - blendFactor) + repaired.a * blendFactor);
+              processedPixels++;
+            }
+          });
 
-        console.log(`修复了 ${processedPixels} 个水印像素`);
+          console.log(`Pass ${pass + 1}: 修复了 ${processedPixels} 个水印像素`);
+        }
         
         ctx.putImageData(imageData, 0, 0);
         
@@ -596,8 +581,8 @@ const WatermarkRemover = () => {
 
     try {
       const progressInterval = setInterval(() => {
-        setProgress(prev => Math.min(prev + 15, 85));
-      }, 100);
+        setProgress(prev => Math.min(prev + 10, 85));
+      }, 200);
 
       const processedBlob = await processImageCanvas(
         imageItem.file, 
@@ -622,9 +607,9 @@ const WatermarkRemover = () => {
       );
       
       if (imageItem.processCount === 0) {
-        toast.success("水印去除完成!", { duration: 800 });
+        toast.success("水印去除完成！建议继续处理以获得更好效果", { duration: 1000 });
       } else {
-        toast.success(`第${imageItem.processCount + 1}次处理完成!`, { duration: 800 });
+        toast.success(`第${imageItem.processCount + 1}次处理完成！`, { duration: 800 });
       }
     } catch (error: any) {
       console.error("Error removing watermark:", error);
@@ -696,7 +681,6 @@ const WatermarkRemover = () => {
       >
         {selectedMark && isMarkingMode && (
           <>
-            {/* Resize handles */}
             <div className="absolute w-2 h-2 bg-blue-500 border border-white -top-1 -left-1 cursor-nw-resize pointer-events-auto" />
             <div className="absolute w-2 h-2 bg-blue-500 border border-white -top-1 -right-1 cursor-ne-resize pointer-events-auto" />
             <div className="absolute w-2 h-2 bg-blue-500 border border-white -bottom-1 -left-1 cursor-sw-resize pointer-events-auto" />
@@ -780,6 +764,15 @@ const WatermarkRemover = () => {
                 <option value="conservative">保守模式</option>
                 <option value="aggressive">激进模式</option>
               </select>
+            </div>
+
+            <div className="bg-blue-50 p-3 rounded-lg text-sm text-blue-800">
+              <p className="font-medium mb-1">处理建议：</p>
+              <ul className="text-xs space-y-1">
+                <li>• 对于顽固水印，建议多次处理</li>
+                <li>• 可先手动标记水印区域提高精度</li>
+                <li>• 激进模式适合处理明显水印</li>
+              </ul>
             </div>
           </div>
           
