@@ -1,4 +1,3 @@
-
 import React, { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -58,70 +57,6 @@ const WatermarkRemover = () => {
       setImages(prevImages => [...prevImages, ...newImages]);
       event.target.value = '';
     }
-  };
-
-  const enhancedWatermarkRemoval = async (imageData: ImageData): Promise<ImageData> => {
-    return new Promise((resolve) => {
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d')!;
-      canvas.width = imageData.width;
-      canvas.height = imageData.height;
-      
-      ctx.putImageData(imageData, 0, 0);
-      const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const pixels = data.data;
-      
-      // 多重去水印算法
-      for (let pass = 0; pass < 3; pass++) {
-        // 第一轮：检测并移除透明度水印
-        for (let i = 0; i < pixels.length; i += 4) {
-          const r = pixels[i];
-          const g = pixels[i + 1];
-          const b = pixels[i + 2];
-          const a = pixels[i + 3];
-          
-          // 检测半透明水印
-          if (a < 240 && a > 50) {
-            const neighbors = this.getNeighborPixels(pixels, i, canvas.width, canvas.height);
-            if (neighbors.length > 0) {
-              const avgR = neighbors.reduce((sum, p) => sum + p.r, 0) / neighbors.length;
-              const avgG = neighbors.reduce((sum, p) => sum + p.g, 0) / neighbors.length;
-              const avgB = neighbors.reduce((sum, p) => sum + p.b, 0) / neighbors.length;
-              
-              pixels[i] = Math.round(avgR);
-              pixels[i + 1] = Math.round(avgG);
-              pixels[i + 2] = Math.round(avgB);
-              pixels[i + 3] = 255;
-            }
-          }
-          
-          // 检测文字水印（高对比度边缘）
-          const brightness = (r + g + b) / 3;
-          if (this.isTextWatermark(pixels, i, canvas.width, canvas.height, brightness)) {
-            const repairColor = this.intelligentRepair(pixels, i, canvas.width, canvas.height);
-            if (repairColor) {
-              pixels[i] = repairColor.r;
-              pixels[i + 1] = repairColor.g;
-              pixels[i + 2] = repairColor.b;
-              pixels[i + 3] = 255;
-            }
-          }
-        }
-        
-        // 第二轮：平滑处理
-        if (pass === 1) {
-          this.applyMedianFilter(pixels, canvas.width, canvas.height);
-        }
-        
-        // 第三轮：边缘保持去噪
-        if (pass === 2) {
-          this.applyEdgePreservingSmooth(pixels, canvas.width, canvas.height);
-        }
-      }
-      
-      ctx.putImageData(data, 0, 0);
-      resolve(ctx.getImageData(0, 0, canvas.width, canvas.height));
-    });
   };
 
   const getNeighborPixels = (pixels: Uint8ClampedArray, index: number, width: number, height: number) => {
@@ -186,7 +121,7 @@ const WatermarkRemover = () => {
   };
 
   const intelligentRepair = (pixels: Uint8ClampedArray, index: number, width: number, height: number) => {
-    const neighbors = this.getNeighborPixels(pixels, index, width, height);
+    const neighbors = getNeighborPixels(pixels, index, width, height);
     
     if (neighbors.length === 0) return null;
     
@@ -250,6 +185,75 @@ const WatermarkRemover = () => {
     }
   };
 
+  const enhancedWatermarkRemoval = async (imageData: ImageData): Promise<ImageData> => {
+    return new Promise((resolve) => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        resolve(imageData);
+        return;
+      }
+      
+      canvas.width = imageData.width;
+      canvas.height = imageData.height;
+      
+      ctx.putImageData(imageData, 0, 0);
+      const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const pixels = data.data;
+      
+      // 多重去水印算法
+      for (let pass = 0; pass < 3; pass++) {
+        // 第一轮：检测并移除透明度水印
+        for (let i = 0; i < pixels.length; i += 4) {
+          const r = pixels[i];
+          const g = pixels[i + 1];
+          const b = pixels[i + 2];
+          const a = pixels[i + 3];
+          
+          // 检测半透明水印
+          if (a < 240 && a > 50) {
+            const neighbors = getNeighborPixels(pixels, i, canvas.width, canvas.height);
+            if (neighbors.length > 0) {
+              const avgR = neighbors.reduce((sum, p) => sum + p.r, 0) / neighbors.length;
+              const avgG = neighbors.reduce((sum, p) => sum + p.g, 0) / neighbors.length;
+              const avgB = neighbors.reduce((sum, p) => sum + p.b, 0) / neighbors.length;
+              
+              pixels[i] = Math.round(avgR);
+              pixels[i + 1] = Math.round(avgG);
+              pixels[i + 2] = Math.round(avgB);
+              pixels[i + 3] = 255;
+            }
+          }
+          
+          // 检测文字水印（高对比度边缘）
+          const brightness = (r + g + b) / 3;
+          if (isTextWatermark(pixels, i, canvas.width, canvas.height, brightness)) {
+            const repairColor = intelligentRepair(pixels, i, canvas.width, canvas.height);
+            if (repairColor) {
+              pixels[i] = repairColor.r;
+              pixels[i + 1] = repairColor.g;
+              pixels[i + 2] = repairColor.b;
+              pixels[i + 3] = 255;
+            }
+          }
+        }
+        
+        // 第二轮：平滑处理
+        if (pass === 1) {
+          applyMedianFilter(pixels, canvas.width, canvas.height);
+        }
+        
+        // 第三轮：边缘保持去噪
+        if (pass === 2) {
+          applyEdgePreservingSmooth(pixels, canvas.width, canvas.height);
+        }
+      }
+      
+      ctx.putImageData(data, 0, 0);
+      resolve(ctx.getImageData(0, 0, canvas.width, canvas.height));
+    });
+  };
+
   const handleRemoveWatermark = async (imageItem: ImageItem) => {
     if (isProcessing) {
       toast.error("请等待当前任务完成");
@@ -266,7 +270,11 @@ const WatermarkRemover = () => {
 
     try {
       const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d')!;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        throw new Error('无法获取canvas上下文');
+      }
+      
       const img = new Image();
       
       img.onload = async () => {
@@ -283,7 +291,7 @@ const WatermarkRemover = () => {
           setProgress(Math.floor((round / maxRounds) * 80));
           
           // 使用增强的去水印算法
-          imageData = await this.enhancedWatermarkRemoval(imageData);
+          imageData = await enhancedWatermarkRemoval(imageData);
           
           // 使用原有处理器作为补充
           if (!processorRef.current) {
@@ -291,7 +299,9 @@ const WatermarkRemover = () => {
           }
           
           const tempCanvas = document.createElement('canvas');
-          const tempCtx = tempCanvas.getContext('2d')!;
+          const tempCtx = tempCanvas.getContext('2d');
+          if (!tempCtx) continue;
+          
           tempCanvas.width = canvas.width;
           tempCanvas.height = canvas.height;
           tempCtx.putImageData(imageData, 0, 0);
