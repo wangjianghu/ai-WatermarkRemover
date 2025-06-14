@@ -207,6 +207,7 @@ const WatermarkRemover = () => {
       currentY: y
     });
   }, [isMarkingMode, images]);
+
   const getResizeHandle = (x: number, y: number, mark: WatermarkMark): 'nw' | 'ne' | 'sw' | 'se' | 'n' | 'e' | 's' | 'w' | null => {
     // 根据缩放级别调整控制点的检测区域
     const handleSize = Math.max(0.01, 0.02 / zoom);
@@ -251,6 +252,7 @@ const WatermarkRemover = () => {
     }
     return null;
   };
+
   const handleMouseMove = useCallback((event: React.MouseEvent<HTMLImageElement>, imageId: string) => {
     if (!isMarkingMode) return;
     
@@ -391,6 +393,7 @@ const WatermarkRemover = () => {
       }
     }
   }, [isMarkingMode, dragState, resizeState, selectedMark, images, zoom]);
+
   const handleMouseUp = useCallback((event: React.MouseEvent<HTMLImageElement>, imageId: string) => {
     if (!isMarkingMode) return;
     event.preventDefault();
