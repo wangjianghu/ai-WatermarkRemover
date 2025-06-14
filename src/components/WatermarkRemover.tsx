@@ -2,9 +2,8 @@ import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { Upload, Download } from 'lucide-react';
+import { Upload, Download, Trash2, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
-import { ProcessedImage } from './ProcessedImage';
 
 interface ImageItem {
   id: string;
@@ -527,25 +526,90 @@ const WatermarkRemover = () => {
             </div>
             
             {images.length > 0 ? (
-              <div className="flex-1 min-h-0 overflow-y-auto p-1">
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-6">
+              <div className="flex-1 min-h-0 overflow-y-auto">
+                <div className="space-y-4">
                   {images.map(image => (
-                    <ProcessedImage
+                    <div
                       key={image.id}
-                      image={{
-                        id: image.id,
-                        originalFile: image.file,
-                        originalUrl: image.url,
-                        processedUrl: image.processedUrl,
-                        isProcessing: isProcessing && selectedImageId === image.id,
-                        progress: isProcessing && selectedImageId === image.id ? progress : 0,
-                      }}
-                      showOriginal={!!showOriginal[image.id]}
-                      onProcess={() => handleRemoveWatermark(image)}
-                      onRemove={() => handleRemoveImage(image.id)}
-                      onDownload={() => handleDownload(image)}
-                      onToggleView={() => handleToggleView(image.id)}
-                    />
+                      className="bg-white rounded-lg border p-4 space-y-3"
+                    >
+                      <div className="flex items-center justify-between">
+                        <h3 className="font-medium text-sm truncate" title={image.file.name}>
+                          {image.file.name}
+                        </h3>
+                        <div className="flex items-center space-x-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleRemoveWatermark(image)}
+                            disabled={isProcessing}
+                            className="text-xs"
+                          >
+                            {isProcessing && selectedImageId === image.id ? '处理中...' : '去水印'}
+                          </Button>
+                          {image.processedUrl && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleDownload(image)}
+                              className="text-xs"
+                            >
+                              <Download className="h-3 w-3 mr-1" />
+                              下载
+                            </Button>
+                          )}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleRemoveImage(image.id)}
+                            className="text-xs"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium text-gray-600">原图</span>
+                          </div>
+                          <div className="relative bg-gray-50 rounded-lg overflow-hidden aspect-video">
+                            <img
+                              src={image.url}
+                              alt="原图"
+                              className="w-full h-full object-contain"
+                            />
+                          </div>
+                        </div>
+                        
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium text-gray-600">处理后</span>
+                          </div>
+                          <div className="relative bg-gray-50 rounded-lg overflow-hidden aspect-video">
+                            {image.processedUrl ? (
+                              <img
+                                src={image.processedUrl}
+                                alt="处理后"
+                                className="w-full h-full object-contain"
+                              />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-gray-400 text-sm">
+                                {isProcessing && selectedImageId === image.id ? (
+                                  <div className="text-center">
+                                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-2"></div>
+                                    处理中...
+                                  </div>
+                                ) : (
+                                  '等待处理'
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -553,7 +617,7 @@ const WatermarkRemover = () => {
               <div className="flex items-center justify-center flex-1 text-gray-500 border-2 border-dashed border-gray-200 rounded-lg">
                 <div className="text-center">
                   <p className="text-lg mb-2">请上传图片</p>
-                  <p className="text-sm text-gray-400">上传后将在此处看到图片处理卡片</p>
+                  <p className="text-sm text-gray-400">上传后将在此处看到图片对比列表</p>
                 </div>
               </div>
             )}
