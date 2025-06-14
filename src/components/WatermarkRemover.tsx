@@ -7,25 +7,30 @@ import { Slider } from '@/components/ui/slider';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Upload, Download, Trash2, MapPin, RefreshCw, Settings, ZoomIn, ZoomOut, RotateCcw, Undo2, Sparkles, Info } from 'lucide-react';
 import { toast } from 'sonner';
-
 interface ImageItem {
   id: string;
   file: File;
   url: string;
   processedUrl: string | null;
   rotation: number;
-  dimensions?: { width: number; height: number };
-  watermarkMark?: {x: number, y: number, width: number, height: number};
+  dimensions?: {
+    width: number;
+    height: number;
+  };
+  watermarkMark?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
   processCount: number;
 }
-
 interface WatermarkMark {
   x: number;
   y: number;
   width: number;
   height: number;
 }
-
 interface DragState {
   isDragging: boolean;
   startX: number;
@@ -33,14 +38,12 @@ interface DragState {
   currentX: number;
   currentY: number;
 }
-
 interface ResizeState {
   isResizing: boolean;
   resizeHandle: 'nw' | 'ne' | 'sw' | 'se' | 'n' | 'e' | 's' | 'w' | null;
   startX: number;
   startY: number;
 }
-
 const WatermarkRemover = () => {
   const [images, setImages] = useState<ImageItem[]>([]);
   const [progress, setProgress] = useState<number>(0);
@@ -50,7 +53,10 @@ const WatermarkRemover = () => {
   const [processingAlgorithm, setProcessingAlgorithm] = useState<'enhanced' | 'conservative' | 'aggressive' | 'lama'>('lama');
   const [markRadius, setMarkRadius] = useState(0.05);
   const [zoom, setZoom] = useState<number>(1);
-  const [scrollPosition, setScrollPosition] = useState({ x: 0, y: 0 });
+  const [scrollPosition, setScrollPosition] = useState({
+    x: 0,
+    y: 0
+  });
   const [dragState, setDragState] = useState<DragState>({
     isDragging: false,
     startX: 0,
@@ -75,71 +81,74 @@ const WatermarkRemover = () => {
       setSelectedImageId(images[0].id);
     }
   }, [images, selectedImageId]);
-
-  const loadImageDimensions = (file: File): Promise<{ width: number; height: number }> => {
-    return new Promise((resolve) => {
+  const loadImageDimensions = (file: File): Promise<{
+    width: number;
+    height: number;
+  }> => {
+    return new Promise(resolve => {
       const img = new Image();
       img.onload = () => {
-        resolve({ width: img.naturalWidth, height: img.naturalHeight });
+        resolve({
+          width: img.naturalWidth,
+          height: img.naturalHeight
+        });
       };
       img.src = URL.createObjectURL(file);
     });
   };
-
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (files && files.length > 0) {
-      const newImages = await Promise.all(
-        Array.from(files).map(async (file) => {
-          const dimensions = await loadImageDimensions(file);
-          return {
-            id: crypto.randomUUID(),
-            file: file,
-            url: URL.createObjectURL(file),
-            processedUrl: null,
-            rotation: 0,
-            dimensions,
-            watermarkMark: undefined,
-            processCount: 0,
-          };
-        })
-      );
+      const newImages = await Promise.all(Array.from(files).map(async file => {
+        const dimensions = await loadImageDimensions(file);
+        return {
+          id: crypto.randomUUID(),
+          file: file,
+          url: URL.createObjectURL(file),
+          processedUrl: null,
+          rotation: 0,
+          dimensions,
+          watermarkMark: undefined,
+          processCount: 0
+        };
+      }));
       setImages(prevImages => [...prevImages, ...newImages]);
       event.target.value = '';
     }
   };
-
   const syncScroll = useCallback((source: 'original' | 'processed', scrollLeft: number, scrollTop: number) => {
     const targetRef = source === 'original' ? processedScrollRef : originalScrollRef;
     if (targetRef.current) {
       targetRef.current.scrollLeft = scrollLeft;
       targetRef.current.scrollTop = scrollTop;
     }
-    setScrollPosition({ x: scrollLeft, y: scrollTop });
+    setScrollPosition({
+      x: scrollLeft,
+      y: scrollTop
+    });
   }, []);
-
   const getImageCoordinates = (event: React.MouseEvent<HTMLImageElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
     const x = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
     const y = Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height));
-    return { x, y };
+    return {
+      x,
+      y
+    };
   };
-
   const handleMouseDown = useCallback((event: React.MouseEvent<HTMLImageElement>, imageId: string) => {
     if (!isMarkingMode) return;
-
     event.preventDefault();
     event.stopPropagation();
-
     const selectedImage = images.find(img => img.id === imageId);
     if (!selectedImage) return;
-
-    const { x, y } = getImageCoordinates(event);
-
+    const {
+      x,
+      y
+    } = getImageCoordinates(event);
     if (selectedImage.watermarkMark) {
       const mark = selectedImage.watermarkMark;
       const handle = getResizeHandle(x, y, mark);
-      
       if (handle) {
         setResizeState({
           isResizing: true,
@@ -150,7 +159,6 @@ const WatermarkRemover = () => {
         setSelectedMark(true);
         return;
       }
-      
       if (x >= mark.x && x <= mark.x + mark.width && y >= mark.y && y <= mark.y + mark.height) {
         setSelectedMark(true);
         setDragState({
@@ -163,14 +171,11 @@ const WatermarkRemover = () => {
         return;
       }
     }
-
     setSelectedMark(false);
-    setImages(prevImages =>
-      prevImages.map(img =>
-        img.id === imageId ? { ...img, watermarkMark: undefined } : img
-      )
-    );
-
+    setImages(prevImages => prevImages.map(img => img.id === imageId ? {
+      ...img,
+      watermarkMark: undefined
+    } : img));
     setDragState({
       isDragging: true,
       startX: x,
@@ -179,21 +184,43 @@ const WatermarkRemover = () => {
       currentY: y
     });
   }, [isMarkingMode, images]);
-
   const getResizeHandle = (x: number, y: number, mark: WatermarkMark): 'nw' | 'ne' | 'sw' | 'se' | 'n' | 'e' | 's' | 'w' | null => {
     // 根据缩放级别调整控制点的检测区域
     const handleSize = Math.max(0.01, 0.02 / zoom);
     const handles = {
-      'nw': { x: mark.x, y: mark.y },
-      'ne': { x: mark.x + mark.width, y: mark.y },
-      'sw': { x: mark.x, y: mark.y + mark.height },
-      'se': { x: mark.x + mark.width, y: mark.y + mark.height },
-      'n': { x: mark.x + mark.width / 2, y: mark.y },
-      'e': { x: mark.x + mark.width, y: mark.y + mark.height / 2 },
-      's': { x: mark.x + mark.width / 2, y: mark.y + mark.height },
-      'w': { x: mark.x, y: mark.y + mark.height / 2 }
+      'nw': {
+        x: mark.x,
+        y: mark.y
+      },
+      'ne': {
+        x: mark.x + mark.width,
+        y: mark.y
+      },
+      'sw': {
+        x: mark.x,
+        y: mark.y + mark.height
+      },
+      'se': {
+        x: mark.x + mark.width,
+        y: mark.y + mark.height
+      },
+      'n': {
+        x: mark.x + mark.width / 2,
+        y: mark.y
+      },
+      'e': {
+        x: mark.x + mark.width,
+        y: mark.y + mark.height / 2
+      },
+      's': {
+        x: mark.x + mark.width / 2,
+        y: mark.y + mark.height
+      },
+      'w': {
+        x: mark.x,
+        y: mark.y + mark.height / 2
+      }
     } as const;
-
     for (const [handle, pos] of Object.entries(handles)) {
       if (Math.abs(x - pos.x) < handleSize && Math.abs(y - pos.y) < handleSize) {
         return handle as 'nw' | 'ne' | 'sw' | 'se' | 'n' | 'e' | 's' | 'w';
@@ -201,25 +228,25 @@ const WatermarkRemover = () => {
     }
     return null;
   };
-
   const handleMouseMove = useCallback((event: React.MouseEvent<HTMLImageElement>, imageId: string) => {
     if (!isMarkingMode) return;
     if (!dragState.isDragging && !resizeState.isResizing) return;
-
     event.preventDefault();
     event.stopPropagation();
-
-    const { x, y } = getImageCoordinates(event);
-
+    const {
+      x,
+      y
+    } = getImageCoordinates(event);
     if (resizeState.isResizing && resizeState.resizeHandle) {
       const selectedImage = images.find(img => img.id === imageId);
       if (selectedImage?.watermarkMark) {
         const mark = selectedImage.watermarkMark;
-        let newMark = { ...mark };
+        let newMark = {
+          ...mark
+        };
 
         // 根据缩放级别调整最小尺寸
         const minSize = Math.max(0.01, 0.015 / zoom);
-
         switch (resizeState.resizeHandle) {
           case 'se':
             newMark.width = Math.max(minSize, x - mark.x);
@@ -274,12 +301,10 @@ const WatermarkRemover = () => {
             }
             break;
         }
-
-        setImages(prevImages =>
-          prevImages.map(img =>
-            img.id === imageId ? { ...img, watermarkMark: newMark } : img
-          )
-        );
+        setImages(prevImages => prevImages.map(img => img.id === imageId ? {
+          ...img,
+          watermarkMark: newMark
+        } : img));
       }
     } else if (dragState.isDragging) {
       if (selectedMark) {
@@ -288,14 +313,14 @@ const WatermarkRemover = () => {
           const mark = selectedImage.watermarkMark;
           const newX = Math.max(0, Math.min(1 - mark.width, x - dragState.startX));
           const newY = Math.max(0, Math.min(1 - mark.height, y - dragState.startY));
-          
-          setImages(prevImages =>
-            prevImages.map(img =>
-              img.id === imageId 
-                ? { ...img, watermarkMark: { ...mark, x: newX, y: newY } }
-                : img
-            )
-          );
+          setImages(prevImages => prevImages.map(img => img.id === imageId ? {
+            ...img,
+            watermarkMark: {
+              ...mark,
+              x: newX,
+              y: newY
+            }
+          } : img));
         }
       } else {
         setDragState(prev => ({
@@ -306,13 +331,10 @@ const WatermarkRemover = () => {
       }
     }
   }, [isMarkingMode, dragState, resizeState, selectedMark, images, zoom]);
-
   const handleMouseUp = useCallback((event: React.MouseEvent<HTMLImageElement>, imageId: string) => {
     if (!isMarkingMode) return;
-
     event.preventDefault();
     event.stopPropagation();
-
     if (resizeState.isResizing) {
       setResizeState({
         isResizing: false,
@@ -322,10 +344,13 @@ const WatermarkRemover = () => {
       });
       return;
     }
-
     if (dragState.isDragging && !selectedMark) {
-      const { startX, startY, currentX, currentY } = dragState;
-      
+      const {
+        startX,
+        startY,
+        currentX,
+        currentY
+      } = dragState;
       const left = Math.min(startX, currentX);
       const top = Math.min(startY, currentY);
       const width = Math.abs(currentX - startX);
@@ -334,17 +359,18 @@ const WatermarkRemover = () => {
       // 根据缩放级别调整最小尺寸
       const minSize = Math.max(0.01, 0.015 / zoom);
       if (width > minSize && height > minSize) {
-        setImages(prevImages =>
-          prevImages.map(img =>
-            img.id === imageId
-              ? { ...img, watermarkMark: { x: left, y: top, width, height } }
-              : img
-          )
-        );
+        setImages(prevImages => prevImages.map(img => img.id === imageId ? {
+          ...img,
+          watermarkMark: {
+            x: left,
+            y: top,
+            width,
+            height
+          }
+        } : img));
         setSelectedMark(true);
       }
     }
-
     setDragState({
       isDragging: false,
       startX: 0,
@@ -353,44 +379,32 @@ const WatermarkRemover = () => {
       currentY: 0
     });
   }, [isMarkingMode, dragState, selectedMark, zoom]);
-
   const clearWatermarkMark = (imageId: string) => {
-    setImages(prevImages =>
-      prevImages.map(img =>
-        img.id === imageId ? { ...img, watermarkMark: undefined } : img
-      )
-    );
+    setImages(prevImages => prevImages.map(img => img.id === imageId ? {
+      ...img,
+      watermarkMark: undefined
+    } : img));
     setSelectedMark(false);
   };
-
   const restoreToOriginal = (imageId: string) => {
-    setImages(prevImages =>
-      prevImages.map(img =>
-        img.id === imageId 
-          ? { 
-              ...img, 
-              processedUrl: null, 
-              processCount: 0,
-              watermarkMark: undefined 
-            } 
-          : img
-      )
-    );
+    setImages(prevImages => prevImages.map(img => img.id === imageId ? {
+      ...img,
+      processedUrl: null,
+      processCount: 0,
+      watermarkMark: undefined
+    } : img));
     setSelectedMark(false);
-    toast.success("已还原到原图状态", { duration: 800 });
+    toast.success("已还原到原图状态", {
+      duration: 800
+    });
   };
 
   // LaMa算法实现
-  const applyLamaInpainting = async (
-    canvas: HTMLCanvasElement, 
-    maskRegion: WatermarkMark
-  ): Promise<void> => {
+  const applyLamaInpainting = async (canvas: HTMLCanvasElement, maskRegion: WatermarkMark): Promise<void> => {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const data = imageData.data;
-    
     const maskLeft = Math.floor(maskRegion.x * canvas.width);
     const maskTop = Math.floor(maskRegion.y * canvas.height);
     const maskRight = Math.floor((maskRegion.x + maskRegion.width) * canvas.width);
@@ -399,7 +413,6 @@ const WatermarkRemover = () => {
     // LaMa inspired multi-scale inpainting
     for (let scale = 0; scale < 3; scale++) {
       const radius = Math.pow(2, scale + 1);
-      
       for (let y = maskTop; y < maskBottom; y++) {
         for (let x = maskLeft; x < maskRight; x++) {
           const repaired = lamaInpaint(data, x, y, canvas.width, canvas.height, radius);
@@ -413,34 +426,30 @@ const WatermarkRemover = () => {
         }
       }
     }
-
     ctx.putImageData(imageData, 0, 0);
   };
+  const lamaInpaint = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number, radius: number) => {
+    const validPixels: Array<{
+      r: number;
+      g: number;
+      b: number;
+      a: number;
+      distance: number;
+      weight: number;
+    }> = [];
 
-  const lamaInpaint = (
-    data: Uint8ClampedArray, 
-    x: number, 
-    y: number, 
-    width: number, 
-    height: number, 
-    radius: number
-  ) => {
-    const validPixels: Array<{r: number, g: number, b: number, a: number, distance: number, weight: number}> = [];
-    
     // 使用更智能的采样策略
     for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 16) {
       for (let r = radius; r <= radius * 3; r += 2) {
         const nx = Math.round(x + Math.cos(angle) * r);
         const ny = Math.round(y + Math.sin(angle) * r);
-        
         if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
           const nIndex = (ny * width + nx) * 4;
           const distance = Math.sqrt((nx - x) * (nx - x) + (ny - y) * (ny - y));
-          
+
           // 纹理一致性检查
           const textureScore = calculateTextureConsistency(data, nx, ny, width, height);
-          const weight = (1 / (distance + 1)) * (1 + textureScore);
-          
+          const weight = 1 / (distance + 1) * (1 + textureScore);
           validPixels.push({
             r: data[nIndex],
             g: data[nIndex + 1],
@@ -452,15 +461,16 @@ const WatermarkRemover = () => {
         }
       }
     }
-
     if (validPixels.length === 0) return null;
 
     // 基于权重的高级混合
     validPixels.sort((a, b) => b.weight - a.weight);
     const topPixels = validPixels.slice(0, Math.min(12, validPixels.length));
-    
-    let totalR = 0, totalG = 0, totalB = 0, totalA = 0, totalWeight = 0;
-    
+    let totalR = 0,
+      totalG = 0,
+      totalB = 0,
+      totalA = 0,
+      totalWeight = 0;
     topPixels.forEach(pixel => {
       totalR += pixel.r * pixel.weight;
       totalG += pixel.g * pixel.weight;
@@ -468,7 +478,6 @@ const WatermarkRemover = () => {
       totalA += pixel.a * pixel.weight;
       totalWeight += pixel.weight;
     });
-
     return {
       r: Math.round(totalR / totalWeight),
       g: Math.round(totalG / totalWeight),
@@ -476,97 +485,67 @@ const WatermarkRemover = () => {
       a: Math.round(totalA / totalWeight)
     };
   };
-
-  const calculateTextureConsistency = (
-    data: Uint8ClampedArray, 
-    x: number, 
-    y: number, 
-    width: number, 
-    height: number
-  ): number => {
+  const calculateTextureConsistency = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number): number => {
     let consistency = 0;
     let count = 0;
-    
     const directions = [[-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 1], [1, -1], [1, 0], [1, 1]];
-    
     for (const [dx, dy] of directions) {
       const nx = x + dx;
       const ny = y + dy;
-      
       if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
         const index = (y * width + x) * 4;
         const nIndex = (ny * width + nx) * 4;
-        
-        const colorDiff = Math.abs(data[index] - data[nIndex]) + 
-                         Math.abs(data[index + 1] - data[nIndex + 1]) + 
-                         Math.abs(data[index + 2] - data[nIndex + 2]);
-        
+        const colorDiff = Math.abs(data[index] - data[nIndex]) + Math.abs(data[index + 1] - data[nIndex + 1]) + Math.abs(data[index + 2] - data[nIndex + 2]);
         consistency += Math.max(0, 255 - colorDiff) / 255;
         count++;
       }
     }
-    
     return count > 0 ? consistency / count : 0;
   };
-
   const detectWatermark = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number): number => {
     const index = (y * width + x) * 4;
     const r = data[index];
     const g = data[index + 1];
     const b = data[index + 2];
     const a = data[index + 3];
-    
     let confidence = 0;
-    
     const isWhiteish = r > 200 && g > 200 && b > 200;
     const isSemiTransparent = a > 50 && a < 250;
     const brightness = (r + g + b) / 3;
-    
     if (isWhiteish && isSemiTransparent) {
       confidence += 0.8;
     }
-    
     if (brightness > 220 && isSemiTransparent) {
       confidence += 0.7;
     }
-    
     if (r > 150 && g < 100 && b < 100) {
       confidence += 0.6;
     }
-    
     if (r > 180 && g > 100 && g < 200 && b < 100) {
       confidence += 0.5;
     }
-    
     if (a < 245) {
       confidence += 0.4;
     }
-    
     const edgeStrength = calculateEdgeStrength(data, x, y, width, height);
     if (edgeStrength > 30) {
       confidence += 0.3;
     }
-    
     const colorUniformity = checkColorUniformity(data, x, y, width, height);
     if (colorUniformity > 0.7) {
       confidence += 0.2;
     }
-    
     return Math.min(confidence, 1.0);
   };
-
   const calculateEdgeStrength = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number): number => {
     const centerIndex = (y * width + x) * 4;
     const centerBrightness = (data[centerIndex] + data[centerIndex + 1] + data[centerIndex + 2]) / 3;
-    
     let maxDiff = 0;
     for (let dy = -1; dy <= 1; dy++) {
       for (let dx = -1; dx <= 1; dx++) {
         if (dx === 0 && dy === 0) continue;
-        
         const nx = x + dx;
         const ny = y + dy;
-        
         if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
           const neighborIndex = (ny * width + nx) * 4;
           const neighborBrightness = (data[neighborIndex] + data[neighborIndex + 1] + data[neighborIndex + 2]) / 3;
@@ -576,72 +555,60 @@ const WatermarkRemover = () => {
     }
     return maxDiff;
   };
-
   const checkColorUniformity = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number): number => {
     const centerIndex = (y * width + x) * 4;
     const centerR = data[centerIndex];
     const centerG = data[centerIndex + 1];
     const centerB = data[centerIndex + 2];
-    
     let uniformCount = 0;
     let totalCount = 0;
     const radius = 2;
-    
     for (let dy = -radius; dy <= radius; dy++) {
       for (let dx = -radius; dx <= radius; dx++) {
         const nx = x + dx;
         const ny = y + dy;
-        
         if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
           const nIndex = (ny * width + nx) * 4;
-          const colorDiff = Math.abs(data[nIndex] - centerR) + 
-                           Math.abs(data[nIndex + 1] - centerG) + 
-                           Math.abs(data[nIndex + 2] - centerB);
-          
+          const colorDiff = Math.abs(data[nIndex] - centerR) + Math.abs(data[nIndex + 1] - centerG) + Math.abs(data[nIndex + 2] - centerB);
           if (colorDiff < 40) uniformCount++;
           totalCount++;
         }
       }
     }
-    
     return totalCount > 0 ? uniformCount / totalCount : 0;
   };
-
   const getPositionWeight = (x: number, y: number, width: number, height: number): number => {
     const normalizedX = x / width;
     const normalizedY = y / height;
-    
+
     // Bottom right corner (most common for watermarks)
     if (normalizedX > 0.7 && normalizedY > 0.7) return 1.5;
     // Other corners
     if ((normalizedX < 0.3 || normalizedX > 0.7) && (normalizedY < 0.3 || normalizedY > 0.7)) return 1.2;
     return 0.8;
   };
-
   const isInMarkedWatermarkArea = (x: number, y: number, mark?: WatermarkMark): boolean => {
     if (!mark) return false;
     return x >= mark.x && x <= mark.x + mark.width && y >= mark.y && y <= mark.y + mark.height;
   };
-
-  const smoothEdges = (data: Uint8ClampedArray, width: number, height: number, region: {x: number, y: number, width: number, height: number}) => {
+  const smoothEdges = (data: Uint8ClampedArray, width: number, height: number, region: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }) => {
     const regionLeft = Math.floor(region.x * width);
     const regionTop = Math.floor(region.y * height);
     const regionRight = Math.floor((region.x + region.width) * width);
     const regionBottom = Math.floor((region.y + region.height) * height);
-    
+
     // Apply Gaussian blur to edge pixels
     const edgeWidth = 3; // pixels
-    
+
     for (let y = regionTop; y < regionBottom; y++) {
       for (let x = regionLeft; x < regionRight; x++) {
         // Check if pixel is near edge
-        const isNearEdge = (
-          x - regionLeft < edgeWidth || 
-          regionRight - x < edgeWidth ||
-          y - regionTop < edgeWidth || 
-          regionBottom - y < edgeWidth
-        );
-        
+        const isNearEdge = x - regionLeft < edgeWidth || regionRight - x < edgeWidth || y - regionTop < edgeWidth || regionBottom - y < edgeWidth;
         if (isNearEdge) {
           const smoothed = gaussianBlur(data, width, height, x, y, 1.5);
           if (smoothed) {
@@ -655,20 +622,20 @@ const WatermarkRemover = () => {
       }
     }
   };
-
   const gaussianBlur = (data: Uint8ClampedArray, width: number, height: number, centerX: number, centerY: number, sigma: number) => {
     const radius = Math.ceil(sigma * 2);
-    let totalR = 0, totalG = 0, totalB = 0, totalA = 0, totalWeight = 0;
-    
+    let totalR = 0,
+      totalG = 0,
+      totalB = 0,
+      totalA = 0,
+      totalWeight = 0;
     for (let dy = -radius; dy <= radius; dy++) {
       for (let dx = -radius; dx <= radius; dx++) {
         const x = centerX + dx;
         const y = centerY + dy;
-        
         if (x >= 0 && x < width && y >= 0 && y < height) {
           const distance = Math.sqrt(dx * dx + dy * dy);
           const weight = Math.exp(-(distance * distance) / (2 * sigma * sigma));
-          
           const index = (y * width + x) * 4;
           totalR += data[index] * weight;
           totalG += data[index + 1] * weight;
@@ -678,7 +645,6 @@ const WatermarkRemover = () => {
         }
       }
     }
-    
     return totalWeight > 0 ? {
       r: Math.round(totalR / totalWeight),
       g: Math.round(totalG / totalWeight),
@@ -686,28 +652,28 @@ const WatermarkRemover = () => {
       a: Math.round(totalA / totalWeight)
     } : null;
   };
-
   const repairPixel = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number, confidence: number) => {
     const radius = Math.min(12, Math.max(6, Math.floor(confidence * 12)));
-    const validPixels: Array<{r: number, g: number, b: number, a: number, weight: number}> = [];
-    
+    const validPixels: Array<{
+      r: number;
+      g: number;
+      b: number;
+      a: number;
+      weight: number;
+    }> = [];
     for (let ring = 1; ring <= 3; ring++) {
       const ringRadius = radius * ring / 3;
       for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 8) {
         const dx = Math.round(Math.cos(angle) * ringRadius);
         const dy = Math.round(Math.sin(angle) * ringRadius);
-        
         const nx = x + dx;
         const ny = y + dy;
-        
         if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
           const neighborIndex = (ny * width + nx) * 4;
           const neighborConfidence = detectWatermark(data, nx, ny, width, height);
-          
           if (neighborConfidence < 0.1) {
             const distance = Math.sqrt(dx * dx + dy * dy);
             const weight = 1 / (distance * distance + 0.1) / ring;
-            
             validPixels.push({
               r: data[neighborIndex],
               g: data[neighborIndex + 1],
@@ -719,18 +685,23 @@ const WatermarkRemover = () => {
         }
       }
     }
-    
     if (validPixels.length === 0) return null;
-    
     validPixels.sort((a, b) => b.weight - a.weight);
     const useCount = Math.min(20, validPixels.length);
-    
     return weightedAverage(validPixels.slice(0, useCount));
   };
-
-  const weightedAverage = (pixels: Array<{r: number, g: number, b: number, a: number, weight: number}>) => {
-    let totalR = 0, totalG = 0, totalB = 0, totalA = 0, totalWeight = 0;
-    
+  const weightedAverage = (pixels: Array<{
+    r: number;
+    g: number;
+    b: number;
+    a: number;
+    weight: number;
+  }>) => {
+    let totalR = 0,
+      totalG = 0,
+      totalB = 0,
+      totalA = 0,
+      totalWeight = 0;
     pixels.forEach(pixel => {
       totalR += pixel.r * pixel.weight;
       totalG += pixel.g * pixel.weight;
@@ -738,7 +709,6 @@ const WatermarkRemover = () => {
       totalA += pixel.a * pixel.weight;
       totalWeight += pixel.weight;
     });
-    
     return {
       r: Math.round(totalR / totalWeight),
       g: Math.round(totalG / totalWeight),
@@ -746,23 +716,19 @@ const WatermarkRemover = () => {
       a: Math.round(totalA / totalWeight)
     };
   };
-
   const processImageCanvas = async (imageFile: File, mark?: WatermarkMark, existingProcessedUrl?: string): Promise<Blob> => {
     return new Promise((resolve, reject) => {
       const img = new Image();
       img.onload = async () => {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
-        
         if (!ctx) {
           reject(new Error('无法获取Canvas上下文'));
           return;
         }
-
         canvas.width = img.width;
         canvas.height = img.height;
         ctx.drawImage(img, 0, 0);
-        
         try {
           if (processingAlgorithm === 'lama' && mark) {
             console.log('使用LaMa算法处理水印区域');
@@ -771,18 +737,18 @@ const WatermarkRemover = () => {
             // 传统算法处理
             const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
             const data = imageData.data;
-            
             for (let pass = 0; pass < 3; pass++) {
               let processedPixels = 0;
-              const watermarkPixels: Array<{x: number, y: number, confidence: number}> = [];
-              
+              const watermarkPixels: Array<{
+                x: number;
+                y: number;
+                confidence: number;
+              }> = [];
               for (let y = 0; y < canvas.height; y++) {
                 for (let x = 0; x < canvas.width; x++) {
                   const normalizedX = x / canvas.width;
                   const normalizedY = y / canvas.height;
-                  
                   let confidence = 0;
-                  
                   if (mark) {
                     if (isInMarkedWatermarkArea(normalizedX, normalizedY, mark)) {
                       confidence = 0.98;
@@ -790,24 +756,26 @@ const WatermarkRemover = () => {
                   } else {
                     confidence = detectWatermark(data, x, y, canvas.width, canvas.height);
                   }
-                  
                   let threshold = 0.2;
-                  if (processingAlgorithm === 'conservative') threshold = 0.35;
-                  else if (processingAlgorithm === 'aggressive') threshold = 0.12;
-                  
+                  if (processingAlgorithm === 'conservative') threshold = 0.35;else if (processingAlgorithm === 'aggressive') threshold = 0.12;
                   if (confidence > threshold) {
-                    watermarkPixels.push({x, y, confidence});
+                    watermarkPixels.push({
+                      x,
+                      y,
+                      confidence
+                    });
                   }
                 }
               }
-              
-              watermarkPixels.forEach(({x, y, confidence}) => {
+              watermarkPixels.forEach(({
+                x,
+                y,
+                confidence
+              }) => {
                 const repaired = repairPixel(data, x, y, canvas.width, canvas.height, confidence);
-                
                 if (repaired) {
                   const index = (y * canvas.width + x) * 4;
                   const blendFactor = Math.min(0.98, confidence + 0.3);
-                  
                   data[index] = Math.round(data[index] * (1 - blendFactor) + repaired.r * blendFactor);
                   data[index + 1] = Math.round(data[index + 1] * (1 - blendFactor) + repaired.g * blendFactor);
                   data[index + 2] = Math.round(data[index + 2] * (1 - blendFactor) + repaired.b * blendFactor);
@@ -815,14 +783,11 @@ const WatermarkRemover = () => {
                   processedPixels++;
                 }
               });
-
               console.log(`Pass ${pass + 1}: 修复了 ${processedPixels} 个水印像素`);
             }
-            
             ctx.putImageData(imageData, 0, 0);
           }
-          
-          canvas.toBlob((blob) => {
+          canvas.toBlob(blob => {
             if (blob) {
               resolve(blob);
             } else {
@@ -833,70 +798,60 @@ const WatermarkRemover = () => {
           reject(error);
         }
       };
-      
       img.onerror = () => reject(new Error('图片加载失败'));
       img.src = existingProcessedUrl || URL.createObjectURL(imageFile);
     });
   };
-
   const handleRemoveWatermark = async (imageItem: ImageItem) => {
     if (isProcessing) {
-      toast.error("请等待当前任务完成", { duration: 800 });
+      toast.error("请等待当前任务完成", {
+        duration: 800
+      });
       return;
     }
-
     if (!imageItem?.file) {
-      toast.error("请先上传图片", { duration: 800 });
+      toast.error("请先上传图片", {
+        duration: 800
+      });
       return;
     }
-
     setIsProcessing(true);
     setProgress(0);
-
     try {
       const progressInterval = setInterval(() => {
         setProgress(prev => Math.min(prev + 10, 85));
       }, 200);
-
-      const processedBlob = await processImageCanvas(
-        imageItem.file, 
-        imageItem.watermarkMark,
-        imageItem.processedUrl || undefined
-      );
-      
+      const processedBlob = await processImageCanvas(imageItem.file, imageItem.watermarkMark, imageItem.processedUrl || undefined);
       clearInterval(progressInterval);
       setProgress(100);
-
       const processedUrl = URL.createObjectURL(processedBlob);
-      setImages(prevImages =>
-        prevImages.map(img =>
-          img.id === imageItem.id 
-            ? { 
-                ...img, 
-                processedUrl: processedUrl,
-                processCount: img.processCount + 1
-              } 
-            : img
-        )
-      );
-      
+      setImages(prevImages => prevImages.map(img => img.id === imageItem.id ? {
+        ...img,
+        processedUrl: processedUrl,
+        processCount: img.processCount + 1
+      } : img));
+
       // Auto-select the processed image
       setSelectedImageId(imageItem.id);
-      
       if (imageItem.processCount === 0) {
-        toast.success("水印去除完成！建议继续处理以获得更好效果", { duration: 1000 });
+        toast.success("水印去除完成！建议继续处理以获得更好效果", {
+          duration: 1000
+        });
       } else {
-        toast.success(`第${imageItem.processCount + 1}次处理完成！`, { duration: 800 });
+        toast.success(`第${imageItem.processCount + 1}次处理完成！`, {
+          duration: 800
+        });
       }
     } catch (error: any) {
       console.error("Error removing watermark:", error);
-      toast.error(`水印去除失败: ${error.message}`, { duration: 1200 });
+      toast.error(`水印去除失败: ${error.message}`, {
+        duration: 1200
+      });
     } finally {
       setIsProcessing(false);
       setProgress(0);
     }
   };
-
   const handleDownload = (imageItem: ImageItem) => {
     if (imageItem.processedUrl) {
       const link = document.createElement("a");
@@ -905,17 +860,19 @@ const WatermarkRemover = () => {
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      toast.success("图片已开始下载!", { duration: 800 });
+      toast.success("图片已开始下载!", {
+        duration: 800
+      });
     } else {
-      toast.error("请先去除水印", { duration: 800 });
+      toast.error("请先去除水印", {
+        duration: 800
+      });
     }
   };
-
   const handleImageListClick = (imageId: string) => {
     setSelectedImageId(imageId);
     setSelectedMark(false);
   };
-
   const handleRemoveImage = (imageId: string) => {
     setImages(prevImages => {
       const newImages = prevImages.filter(img => img.id !== imageId);
@@ -927,122 +884,139 @@ const WatermarkRemover = () => {
     });
     setSelectedMark(false);
   };
-
   const handleZoomIn = () => {
     setZoom(prev => Math.min(prev * 1.2, 5));
   };
-
   const handleZoomOut = () => {
     setZoom(prev => Math.max(prev / 1.2, 0.1));
   };
-
   const resetZoom = () => {
     setZoom(1);
   };
-
   const renderWatermarkMark = (mark?: WatermarkMark, showInProcessed: boolean = true) => {
     if (!mark || !showInProcessed) return null;
-
-    return (
-      <div
-        className="absolute pointer-events-none transition-all duration-150 ease-out"
-        style={{
-          left: `${mark.x * 100}%`,
-          top: `${mark.y * 100}%`,
-          width: `${mark.width * 100}%`,
-          height: `${mark.height * 100}%`,
-          transform: `scale(${zoom})`,
-          transformOrigin: 'top left'
-        }}
-      >
+    return <div className="absolute pointer-events-none transition-all duration-150 ease-out" style={{
+      left: `${mark.x * 100}%`,
+      top: `${mark.y * 100}%`,
+      width: `${mark.width * 100}%`,
+      height: `${mark.height * 100}%`,
+      transform: `scale(${zoom})`,
+      transformOrigin: 'top left'
+    }}>
         {/* 透明矩形背景 */}
-        <div 
-          className={`absolute inset-0 ${
-            selectedMark ? 'bg-blue-500' : 'bg-blue-500'
-          } bg-opacity-10 transition-colors duration-200`}
-        />
+        <div className={`absolute inset-0 ${selectedMark ? 'bg-blue-500' : 'bg-blue-500'} bg-opacity-10 transition-colors duration-200`} />
         
         {/* 蓝色虚线边框 */}
-        <div 
-          className="absolute inset-0 border-2 border-dashed border-blue-500 rounded-sm opacity-90 transition-all duration-200"
-          style={{
-            borderWidth: `${Math.max(1, 2 / zoom)}px`
-          }}
-        />
+        <div className="absolute inset-0 border-2 border-dashed border-blue-500 rounded-sm opacity-90 transition-all duration-200" style={{
+        borderWidth: `${Math.max(1, 2 / zoom)}px`
+      }} />
 
-        {selectedMark && isMarkingMode && showInProcessed && (
-          <>
+        {selectedMark && isMarkingMode && showInProcessed && <>
             {/* 控制点 */}
-            {[
-              { pos: 'nw', style: { top: -1, left: -1 }, cursor: 'nw-resize' },
-              { pos: 'ne', style: { top: -1, right: -1 }, cursor: 'ne-resize' },
-              { pos: 'sw', style: { bottom: -1, left: -1 }, cursor: 'sw-resize' },
-              { pos: 'se', style: { bottom: -1, right: -1 }, cursor: 'se-resize' },
-              { pos: 'n', style: { top: -0.5, left: '50%', transform: 'translateX(-50%)' }, cursor: 'ns-resize' },
-              { pos: 'e', style: { right: -0.5, top: '50%', transform: 'translateY(-50%)' }, cursor: 'ew-resize' },
-              { pos: 's', style: { bottom: -0.5, left: '50%', transform: 'translateX(-50%)' }, cursor: 'ns-resize' },
-              { pos: 'w', style: { left: -0.5, top: '50%', transform: 'translateY(-50%)' }, cursor: 'ew-resize' }
-            ].map(({ pos, style, cursor }) => (
-              <div
-                key={pos}
-                className="absolute bg-blue-600 border-2 border-white rounded-full pointer-events-auto hover:bg-blue-700 hover:scale-110 transition-all duration-150 shadow-lg"
-                style={{
-                  ...style,
-                  width: `${Math.max(8, 12 / zoom)}px`,
-                  height: `${Math.max(8, 12 / zoom)}px`,
-                  cursor
-                }}
-              />
-            ))}
-          </>
-        )}
-      </div>
-    );
+            {[{
+          pos: 'nw',
+          style: {
+            top: -1,
+            left: -1
+          },
+          cursor: 'nw-resize'
+        }, {
+          pos: 'ne',
+          style: {
+            top: -1,
+            right: -1
+          },
+          cursor: 'ne-resize'
+        }, {
+          pos: 'sw',
+          style: {
+            bottom: -1,
+            left: -1
+          },
+          cursor: 'sw-resize'
+        }, {
+          pos: 'se',
+          style: {
+            bottom: -1,
+            right: -1
+          },
+          cursor: 'se-resize'
+        }, {
+          pos: 'n',
+          style: {
+            top: -0.5,
+            left: '50%',
+            transform: 'translateX(-50%)'
+          },
+          cursor: 'ns-resize'
+        }, {
+          pos: 'e',
+          style: {
+            right: -0.5,
+            top: '50%',
+            transform: 'translateY(-50%)'
+          },
+          cursor: 'ew-resize'
+        }, {
+          pos: 's',
+          style: {
+            bottom: -0.5,
+            left: '50%',
+            transform: 'translateX(-50%)'
+          },
+          cursor: 'ns-resize'
+        }, {
+          pos: 'w',
+          style: {
+            left: -0.5,
+            top: '50%',
+            transform: 'translateY(-50%)'
+          },
+          cursor: 'ew-resize'
+        }].map(({
+          pos,
+          style,
+          cursor
+        }) => <div key={pos} className="absolute bg-blue-600 border-2 border-white rounded-full pointer-events-auto hover:bg-blue-700 hover:scale-110 transition-all duration-150 shadow-lg" style={{
+          ...style,
+          width: `${Math.max(8, 12 / zoom)}px`,
+          height: `${Math.max(8, 12 / zoom)}px`,
+          cursor
+        }} />)}
+          </>}
+      </div>;
   };
-
   const renderDragPreview = () => {
     if (!isMarkingMode || !dragState.isDragging || selectedMark) return null;
-
-    const { startX, startY, currentX, currentY } = dragState;
+    const {
+      startX,
+      startY,
+      currentX,
+      currentY
+    } = dragState;
     const left = Math.min(startX, currentX);
     const top = Math.min(startY, currentY);
     const width = Math.abs(currentX - startX);
     const height = Math.abs(currentY - startY);
-    
-    return (
-      <div
-        className="absolute border-2 border-dashed border-blue-500 bg-blue-500 bg-opacity-8 pointer-events-none transition-all duration-75 rounded-sm"
-        style={{
-          left: `${left * 100}%`,
-          top: `${top * 100}%`,
-          width: `${width * 100}%`,
-          height: `${height * 100}%`,
-          transform: `scale(${zoom})`,
-          transformOrigin: 'top left',
-          borderWidth: `${Math.max(1, 2 / zoom)}px`
-        }}
-      />
-    );
+    return <div className="absolute border-2 border-dashed border-blue-500 bg-blue-500 bg-opacity-8 pointer-events-none transition-all duration-75 rounded-sm" style={{
+      left: `${left * 100}%`,
+      top: `${top * 100}%`,
+      width: `${width * 100}%`,
+      height: `${height * 100}%`,
+      transform: `scale(${zoom})`,
+      transformOrigin: 'top left',
+      borderWidth: `${Math.max(1, 2 / zoom)}px`
+    }} />;
   };
-
   const selectedImage = images.find(img => img.id === selectedImageId);
-
-  return (
-    <div className="h-full flex">
+  return <div className="h-full flex">
       {/* Left Sidebar */}
       <div className="w-80 flex-shrink-0 border-r bg-white">
         <div className="h-full flex flex-col p-4">
           {/* Upload Section */}
           <div className="space-y-4 flex-shrink-0">
             <div className="text-center">
-              <input
-                type="file"
-                accept="image/*"
-                multiple
-                onChange={handleFileUpload}
-                className="hidden"
-                id="file-upload"
-              />
+              <input type="file" accept="image/*" multiple onChange={handleFileUpload} className="hidden" id="file-upload" />
               <label htmlFor="file-upload">
                 <Button variant="outline" className="w-full" asChild>
                   <span className="cursor-pointer">
@@ -1057,12 +1031,9 @@ const WatermarkRemover = () => {
             <div className="flex items-center space-x-2">
               <label className="text-sm font-medium whitespace-nowrap">处理算法</label>
               <div className="flex items-center space-x-2 flex-1">
-                <select
-                  value={processingAlgorithm}
-                  onChange={(e) => setProcessingAlgorithm(e.target.value as any)}
-                  className="flex-1 p-2 border rounded-md text-sm"
-                  style={{ maxWidth: '120px' }}
-                >
+                <select value={processingAlgorithm} onChange={e => setProcessingAlgorithm(e.target.value as any)} className="flex-1 p-2 border rounded-md text-sm" style={{
+                maxWidth: '120px'
+              }}>
                   <option value="lama">LaMa算法</option>
                   <option value="enhanced">增强模式</option>
                   <option value="conservative">保守模式</option>
@@ -1110,28 +1081,12 @@ const WatermarkRemover = () => {
               </div>
             </div>
 
-            <div className="bg-gradient-to-r from-blue-50 to-purple-50 p-3 rounded-lg text-sm">
-              <p className="font-medium mb-1 text-blue-800">LaMa算法优势：</p>
-              <ul className="text-xs space-y-1 text-blue-700">
-                <li>• 🎯 专业大遮罩修复技术</li>
-                <li>• 🧠 AI智能纹理分析</li>
-                <li>• ✨ 多尺度语义修复</li>
-                <li>• 🎨 保持图像自然性</li>
-                <li>• 🚀 针对标记区域优化</li>
-              </ul>
-            </div>
+            
           </div>
           
           <ScrollArea className="flex-1">
             <div className="space-y-2">
-              {images.map(image => (
-                <div
-                  key={image.id}
-                  className={`flex items-center justify-between p-3 border rounded-md cursor-pointer transition-colors ${
-                    selectedImageId === image.id ? 'bg-blue-50 border-blue-200' : 'hover:bg-gray-50'
-                  }`}
-                  onClick={() => handleImageListClick(image.id)}
-                >
+              {images.map(image => <div key={image.id} className={`flex items-center justify-between p-3 border rounded-md cursor-pointer transition-colors ${selectedImageId === image.id ? 'bg-blue-50 border-blue-200' : 'hover:bg-gray-50'}`} onClick={() => handleImageListClick(image.id)}>
                   <div className="flex-1 min-w-0">
                     <span className="text-sm truncate block" title={image.file.name}>
                       {image.file.name}
@@ -1141,20 +1096,13 @@ const WatermarkRemover = () => {
                       {image.watermarkMark && ' • 已标记'}
                     </span>
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleRemoveWatermark(image);
-                    }}
-                    disabled={isProcessing}
-                    className="ml-2 flex-shrink-0"
-                  >
-                    {isProcessing && selectedImageId === image.id ? '处理中...' : (image.processCount > 0 ? '继续处理' : '去水印')}
+                  <Button variant="outline" size="sm" onClick={e => {
+                e.stopPropagation();
+                handleRemoveWatermark(image);
+              }} disabled={isProcessing} className="ml-2 flex-shrink-0">
+                    {isProcessing && selectedImageId === image.id ? '处理中...' : image.processCount > 0 ? '继续处理' : '去水印'}
                   </Button>
-                </div>
-              ))}
+                </div>)}
             </div>
           </ScrollArea>
         </div>
@@ -1166,87 +1114,45 @@ const WatermarkRemover = () => {
           <div className="flex items-center space-x-4">
             <h2 className="text-lg font-semibold">图片处理结果</h2>
           </div>
-          {selectedImage && (
-            <div className="flex items-center space-x-2">
-              <Button
-                variant={isMarkingMode ? "default" : "outline"}
-                size="sm"
-                onClick={() => {
-                  setIsMarkingMode(!isMarkingMode);
-                  setSelectedMark(false);
-                }}
-                className="text-xs"
-              >
+          {selectedImage && <div className="flex items-center space-x-2">
+              <Button variant={isMarkingMode ? "default" : "outline"} size="sm" onClick={() => {
+            setIsMarkingMode(!isMarkingMode);
+            setSelectedMark(false);
+          }} className="text-xs">
                 <MapPin className="h-3 w-3 mr-1" />
                 {isMarkingMode ? '退出标记' : '标记水印'}
               </Button>
-              {selectedImage.watermarkMark && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => clearWatermarkMark(selectedImage.id)}
-                  className="text-xs"
-                >
+              {selectedImage.watermarkMark && <Button variant="outline" size="sm" onClick={() => clearWatermarkMark(selectedImage.id)} className="text-xs">
                   清除标记
-                </Button>
-              )}
-              {selectedImage.processedUrl && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => restoreToOriginal(selectedImage.id)}
-                  className="text-xs"
-                >
+                </Button>}
+              {selectedImage.processedUrl && <Button variant="outline" size="sm" onClick={() => restoreToOriginal(selectedImage.id)} className="text-xs">
                   <Undo2 className="h-3 w-3 mr-1" />
                   还原原图
-                </Button>
-              )}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handleRemoveWatermark(selectedImage)}
-                disabled={isProcessing}
-                className="text-xs"
-              >
+                </Button>}
+              <Button variant="outline" size="sm" onClick={() => handleRemoveWatermark(selectedImage)} disabled={isProcessing} className="text-xs">
                 <RefreshCw className="h-3 w-3 mr-1" />
-                {isProcessing ? '处理中...' : (selectedImage.processCount > 0 ? '继续处理' : '去水印')}
+                {isProcessing ? '处理中...' : selectedImage.processCount > 0 ? '继续处理' : '去水印'}
               </Button>
-              {selectedImage.processedUrl && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleDownload(selectedImage)}
-                  className="text-xs"
-                >
+              {selectedImage.processedUrl && <Button variant="outline" size="sm" onClick={() => handleDownload(selectedImage)} className="text-xs">
                   <Download className="h-3 w-3 mr-1" />
                   下载
-                </Button>
-              )}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handleRemoveImage(selectedImage.id)}
-                className="text-xs"
-              >
+                </Button>}
+              <Button variant="outline" size="sm" onClick={() => handleRemoveImage(selectedImage.id)} className="text-xs">
                 <Trash2 className="h-3 w-3" />
               </Button>
-            </div>
-          )}
+            </div>}
         </div>
         
-        {selectedImage ? (
-          <div className="flex-1 grid grid-cols-2 gap-4 p-4 min-h-0 overflow-hidden">
+        {selectedImage ? <div className="flex-1 grid grid-cols-2 gap-4 p-4 min-h-0 overflow-hidden">
             {/* Original Image */}
             <div className="flex flex-col min-h-0">
               <div className="flex items-center justify-between mb-2 flex-shrink-0">
                 <div className="flex items-center space-x-4">
                   <span className="text-sm font-medium text-gray-600">原图</span>
-                  {isProcessing && (
-                    <div className="flex items-center space-x-2">
+                  {isProcessing && <div className="flex items-center space-x-2">
                       <Progress value={progress} className="w-20 h-2" />
                       <span className="text-xs text-gray-500">{progress}%</span>
-                    </div>
-                  )}
+                    </div>}
                 </div>
                 <div className="flex items-center space-x-1">
                   <Button variant="ghost" size="sm" onClick={handleZoomOut} className="h-6 w-6 p-0">
@@ -1261,31 +1167,16 @@ const WatermarkRemover = () => {
                   <span className="text-xs text-gray-500 ml-2">{Math.round(zoom * 100)}%</span>
                 </div>
               </div>
-              <div 
-                ref={originalScrollRef}
-                className="flex-1 relative bg-white rounded-lg border overflow-auto min-h-0"
-                onScroll={(e) => {
-                  const target = e.target as HTMLDivElement;
-                  syncScroll('original', target.scrollLeft, target.scrollTop);
-                }}
-              >
+              <div ref={originalScrollRef} className="flex-1 relative bg-white rounded-lg border overflow-auto min-h-0" onScroll={e => {
+            const target = e.target as HTMLDivElement;
+            syncScroll('original', target.scrollLeft, target.scrollTop);
+          }}>
                 <div className="p-4 flex items-center justify-center min-h-full">
                   <div className="relative">
-                    <img
-                      src={selectedImage.url}
-                      alt="原图"
-                      className={`block object-contain transition-transform duration-200 ease-out ${
-                        isMarkingMode ? 'cursor-crosshair' : ''
-                      }`}
-                      style={{
-                        transform: `scale(${zoom})`,
-                        transformOrigin: 'center center'
-                      }}
-                      onMouseDown={(e) => handleMouseDown(e, selectedImage.id)}
-                      onMouseMove={(e) => handleMouseMove(e, selectedImage.id)}
-                      onMouseUp={(e) => handleMouseUp(e, selectedImage.id)}
-                      draggable={false}
-                    />
+                    <img src={selectedImage.url} alt="原图" className={`block object-contain transition-transform duration-200 ease-out ${isMarkingMode ? 'cursor-crosshair' : ''}`} style={{
+                  transform: `scale(${zoom})`,
+                  transformOrigin: 'center center'
+                }} onMouseDown={e => handleMouseDown(e, selectedImage.id)} onMouseMove={e => handleMouseMove(e, selectedImage.id)} onMouseUp={e => handleMouseUp(e, selectedImage.id)} draggable={false} />
                     {renderWatermarkMark(selectedImage.watermarkMark, true)}
                     {renderDragPreview()}
                   </div>
@@ -1310,55 +1201,32 @@ const WatermarkRemover = () => {
                   <span className="text-xs text-gray-500 ml-2">{Math.round(zoom * 100)}%</span>
                 </div>
               </div>
-              <div 
-                ref={processedScrollRef}
-                className="flex-1 relative bg-white rounded-lg border overflow-auto min-h-0"
-                onScroll={(e) => {
-                  const target = e.target as HTMLDivElement;
-                  syncScroll('processed', target.scrollLeft, target.scrollTop);
-                }}
-              >
-                {selectedImage.processedUrl ? (
-                  <div className="p-4 flex items-center justify-center min-h-full">
+              <div ref={processedScrollRef} className="flex-1 relative bg-white rounded-lg border overflow-auto min-h-0" onScroll={e => {
+            const target = e.target as HTMLDivElement;
+            syncScroll('processed', target.scrollLeft, target.scrollTop);
+          }}>
+                {selectedImage.processedUrl ? <div className="p-4 flex items-center justify-center min-h-full">
                     <div className="relative">
-                      <img
-                        src={selectedImage.processedUrl}
-                        alt="处理后"
-                        className="block object-contain"
-                        style={{
-                          transform: `scale(${zoom})`,
-                          transformOrigin: 'center center'
-                        }}
-                        draggable={false}
-                      />
+                      <img src={selectedImage.processedUrl} alt="处理后" className="block object-contain" style={{
+                  transform: `scale(${zoom})`,
+                  transformOrigin: 'center center'
+                }} draggable={false} />
                     </div>
-                  </div>
-                ) : (
-                  <div className="absolute inset-0 flex items-center justify-center text-gray-400 text-sm">
-                    {isProcessing ? (
-                      <div className="text-center">
+                  </div> : <div className="absolute inset-0 flex items-center justify-center text-gray-400 text-sm">
+                    {isProcessing ? <div className="text-center">
                         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-2"></div>
                         <div className="text-xs">正在处理...</div>
-                      </div>
-                    ) : (
-                      '等待处理'
-                    )}
-                  </div>
-                )}
+                      </div> : '等待处理'}
+                  </div>}
               </div>
             </div>
-          </div>
-        ) : (
-          <div className="flex-1 flex items-center justify-center text-gray-500">
+          </div> : <div className="flex-1 flex items-center justify-center text-gray-500">
             <div className="text-center">
               <p className="text-lg mb-2">请从左侧列表中选择一张图片进行处理</p>
               <p className="text-sm text-gray-400">上传后将在此处看到图片对比</p>
             </div>
-          </div>
-        )}
+          </div>}
       </div>
-    </div>
-  );
+    </div>;
 };
-
 export default WatermarkRemover;
