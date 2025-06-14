@@ -6,7 +6,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Slider } from '@/components/ui/slider';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Upload, Download, Trash2, MapPin, RefreshCw, Settings, ZoomIn, ZoomOut, RotateCcw, Undo2, Sparkles, Info } from 'lucide-react';
+import { Upload, Download, Trash2, MapPin, RefreshCw, Settings, ZoomIn, ZoomOut, RotateCcw, Undo2, Sparkles, Info, Copy } from 'lucide-react';
 import { toast } from 'sonner';
 import BatchDownloadDialog from './BatchDownloadDialog';
 
@@ -860,6 +860,15 @@ const WatermarkRemover = () => {
       });
       return;
     }
+
+    // Check if in marking mode but no watermark mark is set
+    if (isMarkingMode && !imageItem.watermarkMark) {
+      toast.error("请先完成标记", {
+        duration: 800
+      });
+      return;
+    }
+
     setIsProcessing(true);
     setProgress(0);
     try {
@@ -897,22 +906,30 @@ const WatermarkRemover = () => {
       setProgress(0);
     }
   };
-  const handleDownload = (imageItem: ImageItem) => {
-    if (imageItem.processedUrl) {
-      const link = document.createElement("a");
-      link.href = imageItem.processedUrl;
-      link.download = `watermark_removed_${imageItem.file.name}`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      toast.success("图片已开始下载!", {
+
+  // Add batch apply watermark marks function
+  const handleBatchApplyWatermark = () => {
+    if (!selectedImage?.watermarkMark) {
+      toast.error("当前图片没有标记水印", {
         duration: 800
       });
-    } else {
-      toast.error("请先去除水印", {
-        duration: 800
-      });
+      return;
     }
+
+    const currentMark = selectedImage.watermarkMark;
+    
+    // Apply the watermark mark to all other images
+    setImages(prevImages => prevImages.map(img => 
+      img.id === selectedImageId ? img : {
+        ...img,
+        watermarkMark: { ...currentMark }
+      }
+    ));
+
+    const appliedCount = images.filter(img => img.id !== selectedImageId).length;
+    toast.success(`已将水印标记应用到 ${appliedCount} 张图片`, {
+      duration: 1000
+    });
   };
 
   const handleBatchDownload = () => {
@@ -1180,10 +1197,14 @@ const WatermarkRemover = () => {
             setSelectedMark(false);
           }} className="text-xs">
                 <MapPin className="h-3 w-3 mr-1" />
-                {isMarkingMode ? '退出标记' : '标记水印'}
+                {isMarkingMode ? '完成标记' : '标记水印'}
               </Button>
               {selectedImage.watermarkMark && <Button variant="outline" size="sm" onClick={() => clearWatermarkMark(selectedImage.id)} className="text-xs">
                   清除标记
+                </Button>}
+              {selectedImage.watermarkMark && <Button variant="outline" size="sm" onClick={handleBatchApplyWatermark} className="text-xs">
+                  <Copy className="h-3 w-3 mr-1" />
+                  批量应用
                 </Button>}
               {selectedImage.processedUrl && <Button variant="outline" size="sm" onClick={() => restoreToOriginal(selectedImage.id)} className="text-xs">
                   <Undo2 className="h-3 w-3 mr-1" />
