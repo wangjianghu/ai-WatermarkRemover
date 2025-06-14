@@ -1,11 +1,9 @@
-
 import React, { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Upload, Download, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
-import { AdvancedWatermarkProcessor } from './AdvancedWatermarkProcessor';
 
 interface ImageItem {
   id: string;
@@ -24,8 +22,6 @@ const WatermarkRemover = () => {
   const [zoomLevel, setZoomLevel] = useState<ZoomLevel>(1);
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
-
-  const processorRef = useRef<AdvancedWatermarkProcessor | null>(null);
 
   const loadImageDimensions = (file: File): Promise<{ width: number; height: number }> => {
     return new Promise((resolve) => {
@@ -54,12 +50,284 @@ const WatermarkRemover = () => {
         })
       );
       setImages(prevImages => [...prevImages, ...newImages]);
-      // 自动选择第一张上传的图片
       if (newImages.length > 0) {
         setSelectedImageId(newImages[0].id);
       }
-      event.target.value = ''; // Reset the input
+      event.target.value = '';
     }
+  };
+
+  const processImageCanvas = async (imageFile: File): Promise<Blob> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        if (!ctx) {
+          reject(new Error('无法获取Canvas上下文'));
+          return;
+        }
+
+        canvas.width = img.width;
+        canvas.height = img.height;
+        
+        ctx.drawImage(img, 0, 0);
+        
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imageData.data;
+
+        // 改进的水印检测和去除算法
+        for (let i = 0; i < data.length; i += 4) {
+          const x = (i / 4) % canvas.width;
+          const y = Math.floor((i / 4) / canvas.width);
+          
+          const r = data[i];
+          const g = data[i + 1];
+          const b = data[i + 2];
+          const a = data[i + 3];
+          
+          // 检测水印特征
+          if (this.isWatermarkPixel(data, i, x, y, canvas.width, canvas.height)) {
+            // 使用更大范围的邻域进行修复
+            const repaired = this.repairPixel(data, x, y, canvas.width, canvas.height, 8);
+            if (repaired) {
+              data[i] = repaired.r;
+              data[i + 1] = repaired.g;
+              data[i + 2] = repaired.b;
+              data[i + 3] = repaired.a;
+            }
+          }
+        }
+
+        // 应用后处理滤波
+        this.applyPostProcessing(data, canvas.width, canvas.height);
+        
+        ctx.putImageData(imageData, 0, 0);
+        
+        canvas.toBlob((blob) => {
+          if (blob) {
+            resolve(blob);
+          } else {
+            reject(new Error('无法生成处理后的图片'));
+          }
+        }, 'image/jpeg', 0.95);
+      };
+      
+      img.onerror = () => reject(new Error('图片加载失败'));
+      img.src = URL.createObjectURL(imageFile);
+    });
+  };
+
+  isWatermarkPixel = (data: Uint8ClampedArray, index: number, x: number, y: number, width: number, height: number): boolean => {
+    const r = data[index];
+    const g = data[index + 1];
+    const b = data[index + 2];
+    const a = data[index + 3];
+    
+    const brightness = (r + g + b) / 3;
+    
+    // 检测透明度异常
+    const isTransparent = a < 200;
+    
+    // 检测极端亮度
+    const isExtremeBright = brightness > 220 || brightness < 40;
+    
+    // 检测高对比度
+    const contrast = this.calculateLocalContrast(data, x, y, width, height);
+    const hasHighContrast = contrast > 60;
+    
+    // 检测文字特征
+    const isTextLike = this.detectTextFeatures(data, x, y, width, height);
+    
+    // 检测颜色单调性（水印通常颜色单一）
+    const isMonochrome = Math.abs(r - g) < 15 && Math.abs(g - b) < 15 && Math.abs(r - b) < 15;
+    
+    // 综合判断
+    let suspicionScore = 0;
+    if (isTransparent) suspicionScore += 0.4;
+    if (isExtremeBright) suspicionScore += 0.3;
+    if (hasHighContrast) suspicionScore += 0.2;
+    if (isTextLike) suspicionScore += 0.4;
+    if (isMonochrome && brightness > 180) suspicionScore += 0.3;
+    
+    return suspicionScore > 0.6;
+  };
+
+  calculateLocalContrast = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number): number => {
+    const centerIndex = (y * width + x) * 4;
+    const centerBrightness = (data[centerIndex] + data[centerIndex + 1] + data[centerIndex + 2]) / 3;
+    
+    let maxDiff = 0;
+    const radius = 3;
+    
+    for (let dy = -radius; dy <= radius; dy++) {
+      for (let dx = -radius; dx <= radius; dx++) {
+        const nx = x + dx;
+        const ny = y + dy;
+        
+        if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+          const neighborIndex = (ny * width + nx) * 4;
+          const neighborBrightness = (data[neighborIndex] + data[neighborIndex + 1] + data[neighborIndex + 2]) / 3;
+          maxDiff = Math.max(maxDiff, Math.abs(centerBrightness - neighborBrightness));
+        }
+      }
+    }
+    
+    return maxDiff;
+  };
+
+  detectTextFeatures = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number): boolean => {
+    // 检测边缘密度
+    let edgeCount = 0;
+    let totalPixels = 0;
+    const radius = 2;
+    
+    for (let dy = -radius; dy <= radius; dy++) {
+      for (let dx = -radius; dx <= radius; dx++) {
+        const nx = x + dx;
+        const ny = y + dy;
+        
+        if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+          const edgeStrength = this.calculateEdgeStrength(data, nx, ny, width, height);
+          if (edgeStrength > 30) edgeCount++;
+          totalPixels++;
+        }
+      }
+    }
+    
+    return totalPixels > 0 && (edgeCount / totalPixels) > 0.4;
+  };
+
+  calculateEdgeStrength = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number): number => {
+    const sobelX = [-1, 0, 1, -2, 0, 2, -1, 0, 1];
+    const sobelY = [-1, -2, -1, 0, 0, 0, 1, 2, 1];
+    
+    let gx = 0, gy = 0;
+    
+    for (let i = 0; i < 9; i++) {
+      const dx = (i % 3) - 1;
+      const dy = Math.floor(i / 3) - 1;
+      const nx = x + dx;
+      const ny = y + dy;
+      
+      if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+        const idx = (ny * width + nx) * 4;
+        const brightness = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
+        
+        gx += brightness * sobelX[i];
+        gy += brightness * sobelY[i];
+      }
+    }
+    
+    return Math.sqrt(gx * gx + gy * gy);
+  };
+
+  repairPixel = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number, radius: number) => {
+    const validPixels: Array<{r: number, g: number, b: number, a: number, weight: number}> = [];
+    
+    for (let dy = -radius; dy <= radius; dy++) {
+      for (let dx = -radius; dx <= radius; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        
+        const nx = x + dx;
+        const ny = y + dy;
+        
+        if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+          const neighborIndex = (ny * width + nx) * 4;
+          
+          // 检查邻居是否也是水印
+          if (!this.isWatermarkPixel(data, neighborIndex, nx, ny, width, height)) {
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            const weight = 1 / (distance * distance + 0.1);
+            
+            validPixels.push({
+              r: data[neighborIndex],
+              g: data[neighborIndex + 1],
+              b: data[neighborIndex + 2],
+              a: data[neighborIndex + 3],
+              weight: weight
+            });
+          }
+        }
+      }
+    }
+    
+    if (validPixels.length === 0) return null;
+    
+    // 加权平均修复
+    let totalR = 0, totalG = 0, totalB = 0, totalA = 0, totalWeight = 0;
+    
+    validPixels.forEach(pixel => {
+      totalR += pixel.r * pixel.weight;
+      totalG += pixel.g * pixel.weight;
+      totalB += pixel.b * pixel.weight;
+      totalA += pixel.a * pixel.weight;
+      totalWeight += pixel.weight;
+    });
+    
+    return {
+      r: Math.round(totalR / totalWeight),
+      g: Math.round(totalG / totalWeight),
+      b: Math.round(totalB / totalWeight),
+      a: Math.round(totalA / totalWeight)
+    };
+  };
+
+  applyPostProcessing = (data: Uint8ClampedArray, width: number, height: number) => {
+    // 应用轻微的高斯模糊来平滑修复区域
+    const tempData = new Uint8ClampedArray(data);
+    
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        const index = (y * width + x) * 4;
+        
+        // 只对修复过的区域应用后处理
+        if (this.needsSmoothing(tempData, x, y, width, height)) {
+          for (let c = 0; c < 3; c++) {
+            let sum = 0;
+            let count = 0;
+            
+            for (let dy = -1; dy <= 1; dy++) {
+              for (let dx = -1; dx <= 1; dx++) {
+                const nx = x + dx;
+                const ny = y + dy;
+                const nIndex = (ny * width + nx) * 4;
+                sum += tempData[nIndex + c];
+                count++;
+              }
+            }
+            
+            data[index + c] = Math.round(sum / count);
+          }
+        }
+      }
+    }
+  };
+
+  needsSmoothing = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number): boolean => {
+    // 检查像素是否需要平滑处理
+    const centerIndex = (y * width + x) * 4;
+    let variance = 0;
+    let count = 0;
+    
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const nx = x + dx;
+        const ny = y + dy;
+        
+        if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+          const nIndex = (ny * width + nx) * 4;
+          const diff = Math.abs(data[centerIndex] - data[nIndex]) + 
+                      Math.abs(data[centerIndex + 1] - data[nIndex + 1]) + 
+                      Math.abs(data[centerIndex + 2] - data[nIndex + 2]);
+          variance += diff;
+          count++;
+        }
+      }
+    }
+    
+    return count > 0 && (variance / count) > 30;
   };
 
   const handleRemoveWatermark = async (imageItem: ImageItem) => {
@@ -77,14 +345,15 @@ const WatermarkRemover = () => {
     setProgress(0);
 
     try {
-      if (!processorRef.current) {
-        processorRef.current = new AdvancedWatermarkProcessor();
-      }
+      // 模拟进度更新
+      const progressInterval = setInterval(() => {
+        setProgress(prev => Math.min(prev + 10, 90));
+      }, 200);
 
-      const processedBlob = await processorRef.current.removeWatermark(
-        imageItem.file,
-        (progress) => setProgress(progress)
-      );
+      const processedBlob = await this.processImageCanvas(imageItem.file);
+      
+      clearInterval(progressInterval);
+      setProgress(100);
 
       const processedUrl = URL.createObjectURL(processedBlob);
       setImages(prevImages =>
@@ -138,13 +407,11 @@ const WatermarkRemover = () => {
 
   const selectedImage = images.find(img => img.id === selectedImageId);
 
-  // 计算最适合的显示尺寸，确保图片完整显示在容器内
   const calculateDisplaySize = (dimensions?: { width: number; height: number }) => {
-    if (!dimensions) return { width: 300, height: 200 };
+    if (!dimensions) return { width: 400, height: 300 };
     
-    // 设置最大显示尺寸
-    const maxWidth = 450;
-    const maxHeight = 350;
+    const maxWidth = 500;
+    const maxHeight = 400;
     const { width, height } = dimensions;
     
     const aspectRatio = width / height;
@@ -152,7 +419,6 @@ const WatermarkRemover = () => {
     let displayWidth = maxWidth;
     let displayHeight = maxWidth / aspectRatio;
     
-    // 如果高度超过最大高度，则以高度为准调整宽度
     if (displayHeight > maxHeight) {
       displayHeight = maxHeight;
       displayWidth = maxHeight * aspectRatio;
@@ -166,35 +432,39 @@ const WatermarkRemover = () => {
 
   return (
     <div className="max-w-7xl mx-auto p-6 space-y-6">
-      <Card>
-        <CardContent className="flex flex-col items-center justify-center p-8">
-          <input
-            type="file"
-            id="upload"
-            multiple
-            accept="image/*"
-            className="hidden"
-            onChange={handleFileUpload}
-          />
-          <Button asChild disabled={isProcessing}>
-            <label htmlFor="upload" className="flex items-center space-x-2">
-              <Upload className="h-4 w-4" />
-              <span>{isProcessing ? "处理中..." : "上传图片"}</span>
-            </label>
-          </Button>
-          {progress > 0 && (
-            <div className="w-full mt-4">
+      {progress > 0 && (
+        <Card>
+          <CardContent className="p-6">
+            <div className="w-full">
               <Progress value={progress} />
-              <p className="text-center mt-2 text-sm text-gray-600">{progress}%</p>
+              <p className="text-center mt-2 text-sm text-gray-600">处理进度: {progress}%</p>
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
       
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         <Card>
           <CardContent className="space-y-4 p-4">
-            <h2 className="text-lg font-semibold">图片列表</h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold">图片列表</h2>
+              <div>
+                <input
+                  type="file"
+                  id="upload"
+                  multiple
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleFileUpload}
+                />
+                <Button asChild disabled={isProcessing} size="sm">
+                  <label htmlFor="upload" className="flex items-center space-x-2 cursor-pointer">
+                    <Upload className="h-4 w-4" />
+                    <span>上传图片</span>
+                  </label>
+                </Button>
+              </div>
+            </div>
             <div className="flex flex-col space-y-2">
               {images.map(image => (
                 <div
@@ -255,14 +525,13 @@ const WatermarkRemover = () => {
             {selectedImage ? (
               <div className="w-full">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* 原始图片 */}
                   <div className="flex flex-col items-center space-y-3">
                     <h3 className="text-md font-semibold">原始图片</h3>
                     <div 
                       className="border-2 border-gray-200 rounded-lg overflow-hidden bg-gray-50 flex items-center justify-center"
                       style={{
                         ...calculateDisplaySize(selectedImage.dimensions),
-                        minHeight: '200px'
+                        minHeight: '300px'
                       }}
                     >
                       <img
@@ -276,14 +545,13 @@ const WatermarkRemover = () => {
                     </div>
                   </div>
 
-                  {/* 处理后图片 */}
                   <div className="flex flex-col items-center space-y-3">
                     <h3 className="text-md font-semibold">处理结果</h3>
                     <div 
                       className="border-2 border-gray-200 rounded-lg overflow-hidden bg-gray-50 flex items-center justify-center"
                       style={{
                         ...calculateDisplaySize(selectedImage.dimensions),
-                        minHeight: '200px'
+                        minHeight: '300px'
                       }}
                     >
                       {selectedImage.processedUrl ? (
@@ -311,7 +579,6 @@ const WatermarkRemover = () => {
                   </div>
                 </div>
                 
-                {/* 下载按钮 */}
                 {selectedImage.processedUrl && (
                   <div className="flex justify-center mt-6">
                     <Button 
