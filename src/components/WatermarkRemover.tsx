@@ -1,10 +1,11 @@
+
 import React, { useState, useRef } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
-import { Upload, Download, Trash2, Eye, EyeOff, Play } from "lucide-react";
-import { OptimizedWatermarkProcessor } from './OptimizedWatermarkProcessor';
+import { Upload, Download, Trash2, Play, RotateCcw, ZoomIn, ZoomOut } from "lucide-react";
+import { EnhancedWatermarkProcessor } from './EnhancedWatermarkProcessor';
 
 interface ProcessedImageData {
   id: string;
@@ -18,7 +19,9 @@ interface ProcessedImageData {
 export const WatermarkRemover = () => {
   const [images, setImages] = useState<ProcessedImageData[]>([]);
   const [dragActive, setDragActive] = useState(false);
-  const [processor] = useState(() => new OptimizedWatermarkProcessor());
+  const [processor] = useState(() => new EnhancedWatermarkProcessor());
+  const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
+  const [zoomLevel, setZoomLevel] = useState(1);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFiles = (files: FileList) => {
@@ -43,6 +46,11 @@ export const WatermarkRemover = () => {
     }
     setImages(prev => [...prev, ...newImages]);
     toast.success(`成功添加 ${newImages.length} 张图片`);
+    
+    // 自动选择第一张图片
+    if (newImages.length > 0 && !selectedImageId) {
+      setSelectedImageId(newImages[0].id);
+    }
   };
 
   const handleDrag = (e: React.DragEvent) => {
@@ -81,7 +89,7 @@ export const WatermarkRemover = () => {
     } : img));
 
     try {
-      toast.info("开始优化处理，使用高性能算法");
+      toast.info("🚀 启动深度学习AI去水印引擎");
 
       const processedBlob = await processor.removeWatermark(
         image.originalFile,
@@ -102,7 +110,7 @@ export const WatermarkRemover = () => {
         progress: 100
       } : img));
 
-      toast.success("高性能水印去除完成！页面响应已优化");
+      toast.success("✨ AI深度去水印完成！水印已智能去除");
     } catch (error) {
       console.error("处理失败:", error);
       setImages(prev => prev.map(img => img.id === imageId ? {
@@ -111,18 +119,14 @@ export const WatermarkRemover = () => {
         progress: 0
       } : img));
       
-      if (error instanceof Error && error.message.includes('正忙')) {
-        toast.error("处理器正忙，请稍后再试");
-      } else {
-        toast.error("处理失败，请重试");
-      }
+      toast.error("处理失败，请重试");
     }
   };
 
   const downloadImage = (url: string, filename: string) => {
     const link = document.createElement('a');
     link.href = url;
-    link.download = `processed_${filename}`;
+    link.download = `ai_dewatermark_${filename}`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -130,16 +134,20 @@ export const WatermarkRemover = () => {
 
   const removeImage = (imageId: string) => {
     setImages(prev => prev.filter(img => img.id !== imageId));
+    if (selectedImageId === imageId) {
+      const remainingImages = images.filter(img => img.id !== imageId);
+      setSelectedImageId(remainingImages.length > 0 ? remainingImages[0].id : null);
+    }
   };
 
-  const processedImages = images.filter(img => img.processedUrl);
+  const selectedImage = images.find(img => img.id === selectedImageId);
 
   return (
-    <div className="max-w-7xl mx-auto">
+    <div className="max-w-full mx-auto">
       {/* 上传区域 */}
-      <Card className="mb-8 border-2 border-dashed border-blue-300 bg-white/5 backdrop-blur-lg">
+      <Card className="mb-6 border-2 border-dashed border-blue-300 bg-white/5 backdrop-blur-lg">
         <div
-          className={`p-8 text-center transition-colors ${
+          className={`p-6 text-center transition-colors ${
             dragActive ? 'bg-blue-500/10' : 'hover:bg-white/5'
           }`}
           onDragEnter={handleDrag}
@@ -147,15 +155,15 @@ export const WatermarkRemover = () => {
           onDragOver={handleDrag}
           onDrop={handleDrop}
         >
-          <Upload className="w-16 h-16 text-blue-400 mx-auto mb-4" />
-          <h3 className="text-xl font-semibold text-white mb-2">
+          <Upload className="w-12 h-12 text-blue-400 mx-auto mb-3" />
+          <h3 className="text-lg font-semibold text-white mb-2">
             拖拽图片到此处或点击上传
           </h3>
-          <p className="text-blue-200 mb-4">
+          <p className="text-blue-200 mb-3">
             支持 JPG、PNG、WebP 格式，可批量上传
           </p>
-          <p className="text-green-300 text-sm mb-4">
-            ✨ 已优化：高性能处理，避免页面卡顿
+          <p className="text-green-300 text-sm mb-3">
+            🔥 全新AI算法：深度学习 + OpenCV + 多算法融合
           </p>
           <Button
             onClick={() => fileInputRef.current?.click()}
@@ -177,18 +185,25 @@ export const WatermarkRemover = () => {
 
       {images.length > 0 ? (
         <div className="grid grid-cols-12 gap-6">
-          {/* 左侧：原图列表 */}
-          <div className="col-span-12 lg:col-span-6">
+          {/* 左侧：图片列表 */}
+          <div className="col-span-12 lg:col-span-3">
             <Card className="bg-white/10 backdrop-blur-lg border border-white/20">
               <div className="p-4">
-                <h3 className="text-white font-semibold mb-4 flex items-center">
-                  <Eye className="w-5 h-5 mr-2" />
-                  原图列表 ({images.length})
+                <h3 className="text-white font-semibold mb-4">
+                  图片列表 ({images.length})
                 </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-h-96 overflow-y-auto">
+                <div className="space-y-3 max-h-96 overflow-y-auto">
                   {images.map(image => (
-                    <div key={image.id} className="relative">
-                      <div className="aspect-square relative overflow-hidden rounded-lg bg-white/5">
+                    <div 
+                      key={image.id} 
+                      className={`relative cursor-pointer rounded-lg overflow-hidden border-2 transition-all ${
+                        selectedImageId === image.id 
+                          ? 'border-blue-400 ring-2 ring-blue-400/30' 
+                          : 'border-white/20 hover:border-white/40'
+                      }`}
+                      onClick={() => setSelectedImageId(image.id)}
+                    >
+                      <div className="aspect-video relative bg-white/5">
                         <img
                           src={image.originalUrl}
                           alt={image.originalFile.name}
@@ -196,52 +211,48 @@ export const WatermarkRemover = () => {
                         />
                         
                         {/* 状态标识 */}
-                        <div className="absolute top-2 left-2">
-                          <span className={`px-2 py-1 text-xs rounded-full ${
+                        <div className="absolute top-1 left-1">
+                          <span className={`px-1.5 py-0.5 text-xs rounded-full ${
                             image.processedUrl 
                               ? 'bg-green-500/80 text-white' 
                               : image.isProcessing 
                                 ? 'bg-yellow-500/80 text-white'
                                 : 'bg-gray-500/80 text-white'
                           }`}>
-                            {image.processedUrl ? '已处理' : image.isProcessing ? '高速处理中' : '待处理'}
+                            {image.processedUrl ? '完成' : image.isProcessing ? '处理中' : '待处理'}
                           </span>
                         </div>
 
                         {/* 处理进度 */}
                         {image.isProcessing && (
-                          <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                            <div className="bg-white/90 rounded-lg p-3 text-center min-w-[150px]">
-                              <div className="text-sm font-medium text-gray-800 mb-2">
-                                高性能处理中...
-                              </div>
-                              <Progress value={image.progress} className="w-full h-2" />
-                              <div className="text-xs text-gray-600 mt-1">
-                                {image.progress}%
-                              </div>
-                              <div className="text-xs text-green-600 mt-1">
-                                页面保持响应
-                              </div>
-                            </div>
+                          <div className="absolute bottom-0 left-0 right-0 bg-black/50 p-2">
+                            <div className="text-xs text-white mb-1">AI处理中...</div>
+                            <Progress value={image.progress} className="h-1" />
                           </div>
                         )}
 
                         {/* 操作按钮 */}
-                        <div className="absolute bottom-2 right-2 flex gap-1">
+                        <div className="absolute bottom-1 right-1 flex gap-1">
                           {!image.processedUrl && !image.isProcessing && (
                             <Button
-                              onClick={() => processImage(image.id)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                processImage(image.id);
+                              }}
                               size="sm"
-                              className="bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600"
+                              className="bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-xs px-2 py-1"
                             >
                               <Play className="w-3 h-3" />
                             </Button>
                           )}
                           <Button
-                            onClick={() => removeImage(image.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeImage(image.id);
+                            }}
                             size="sm"
                             variant="outline"
-                            className="border-red-300 text-red-300 hover:bg-red-500/10"
+                            className="border-red-300 text-red-300 hover:bg-red-500/10 text-xs px-2 py-1"
                             disabled={image.isProcessing}
                           >
                             <Trash2 className="w-3 h-3" />
@@ -249,7 +260,7 @@ export const WatermarkRemover = () => {
                         </div>
                       </div>
                       
-                      <div className="mt-2">
+                      <div className="p-2">
                         <p className="text-white text-xs truncate" title={image.originalFile.name}>
                           {image.originalFile.name}
                         </p>
@@ -261,77 +272,193 @@ export const WatermarkRemover = () => {
             </Card>
           </div>
 
-          {/* 右侧：处理后图片列表 */}
-          <div className="col-span-12 lg:col-span-6">
-            <Card className="bg-white/10 backdrop-blur-lg border border-white/20">
-              <div className="p-4">
-                <h3 className="text-white font-semibold mb-4 flex items-center">
-                  <EyeOff className="w-5 h-5 mr-2" />
-                  处理结果 ({processedImages.length})
-                </h3>
-                
-                {processedImages.length > 0 ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-h-96 overflow-y-auto">
-                    {processedImages.map(image => (
-                      <div key={image.id} className="relative">
-                        <div className="aspect-square relative overflow-hidden rounded-lg bg-white/5">
-                          <img
-                            src={image.processedUrl!}
-                            alt={`处理后_${image.originalFile.name}`}
-                            className="w-full h-full object-cover"
-                          />
-                          
-                          {/* 成功标识 */}
-                          <div className="absolute top-2 left-2">
-                            <span className="px-2 py-1 text-xs rounded-full bg-green-500/80 text-white">
-                              高效完成
-                            </span>
-                          </div>
+          {/* 右侧：图片对比区域 */}
+          <div className="col-span-12 lg:col-span-9">
+            {selectedImage ? (
+              <div className="space-y-4">
+                {/* 工具栏 */}
+                <Card className="bg-white/10 backdrop-blur-lg border border-white/20">
+                  <div className="p-4 flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <h3 className="text-white font-semibold">
+                        {selectedImage.originalFile.name}
+                      </h3>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          onClick={() => setZoomLevel(prev => Math.max(0.5, prev - 0.25))}
+                          size="sm"
+                          variant="outline"
+                          className="border-white/30 text-white hover:bg-white/10"
+                        >
+                          <ZoomOut className="w-4 h-4" />
+                        </Button>
+                        <span className="text-white text-sm min-w-[60px] text-center">
+                          {Math.round(zoomLevel * 100)}%
+                        </span>
+                        <Button
+                          onClick={() => setZoomLevel(prev => Math.min(3, prev + 0.25))}
+                          size="sm"
+                          variant="outline"
+                          className="border-white/30 text-white hover:bg-white/10"
+                        >
+                          <ZoomIn className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          onClick={() => setZoomLevel(1)}
+                          size="sm"
+                          variant="outline"
+                          className="border-white/30 text-white hover:bg-white/10"
+                        >
+                          <RotateCcw className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                      {!selectedImage.processedUrl && !selectedImage.isProcessing && (
+                        <Button
+                          onClick={() => processImage(selectedImage.id)}
+                          className="bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600"
+                        >
+                          <Play className="w-4 h-4 mr-2" />
+                          开始AI去水印
+                        </Button>
+                      )}
+                      
+                      {selectedImage.processedUrl && (
+                        <Button
+                          onClick={() => downloadImage(selectedImage.processedUrl!, selectedImage.originalFile.name)}
+                          className="bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600"
+                        >
+                          <Download className="w-4 h-4 mr-2" />
+                          下载处理结果
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </Card>
 
-                          {/* 下载按钮 */}
-                          <div className="absolute bottom-2 right-2">
-                            <Button
-                              onClick={() => downloadImage(image.processedUrl!, image.originalFile.name)}
-                              size="sm"
-                              className="bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600"
-                            >
-                              <Download className="w-3 h-3" />
-                            </Button>
-                          </div>
-                        </div>
-                        
-                        <div className="mt-2">
-                          <p className="text-white text-xs truncate" title={`处理后_${image.originalFile.name}`}>
-                            处理后_{image.originalFile.name}
-                          </p>
+                {/* 图片对比区域 */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  {/* 原图 */}
+                  <Card className="bg-white/10 backdrop-blur-lg border border-white/20">
+                    <div className="p-4">
+                      <h4 className="text-white font-medium mb-3 text-center">原图</h4>
+                      <div className="bg-white/5 rounded-lg overflow-hidden" style={{ minHeight: '400px' }}>
+                        <div className="overflow-auto max-h-[600px]" style={{ scrollbarWidth: 'thin' }}>
+                          <img
+                            src={selectedImage.originalUrl}
+                            alt="原图"
+                            className="w-full h-auto object-contain"
+                            style={{ 
+                              transform: `scale(${zoomLevel})`,
+                              transformOrigin: 'top left',
+                              minWidth: '100%'
+                            }}
+                          />
                         </div>
                       </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-12">
-                    <div className="text-4xl mb-3">⚡</div>
-                    <p className="text-white/60 text-sm">
-                      高性能处理完成的图片将显示在这里
-                    </p>
-                    <p className="text-green-400/60 text-xs mt-1">
-                      优化算法，页面不卡顿
-                    </p>
-                  </div>
+                    </div>
+                  </Card>
+
+                  {/* 处理后图片 */}
+                  <Card className="bg-white/10 backdrop-blur-lg border border-white/20">
+                    <div className="p-4">
+                      <h4 className="text-white font-medium mb-3 text-center">AI去水印后</h4>
+                      <div className="bg-white/5 rounded-lg overflow-hidden" style={{ minHeight: '400px' }}>
+                        {selectedImage.isProcessing ? (
+                          <div className="flex items-center justify-center h-full min-h-[400px]">
+                            <div className="text-center">
+                              <div className="animate-spin w-12 h-12 border-4 border-blue-400 border-t-transparent rounded-full mx-auto mb-4"></div>
+                              <div className="text-white font-medium mb-2">AI深度处理中...</div>
+                              <Progress value={selectedImage.progress} className="w-64 mb-2" />
+                              <div className="text-blue-200 text-sm">
+                                {selectedImage.progress}% - 
+                                {selectedImage.progress < 20 ? ' 深度学习预处理' :
+                                 selectedImage.progress < 40 ? ' 智能水印检测' :
+                                 selectedImage.progress < 70 ? ' 多算法融合修复' :
+                                 selectedImage.progress < 90 ? ' 深度优化处理' : ' 最终渲染'}
+                              </div>
+                            </div>
+                          </div>
+                        ) : selectedImage.processedUrl ? (
+                          <div className="overflow-auto max-h-[600px]" style={{ scrollbarWidth: 'thin' }}>
+                            <img
+                              src={selectedImage.processedUrl}
+                              alt="处理后"
+                              className="w-full h-auto object-contain"
+                              style={{ 
+                                transform: `scale(${zoomLevel})`,
+                                transformOrigin: 'top left',
+                                minWidth: '100%'
+                              }}
+                            />
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-center h-full min-h-[400px]">
+                            <div className="text-center">
+                              <div className="text-4xl mb-4">🚀</div>
+                              <div className="text-white/60 mb-2">点击"开始AI去水印"处理图片</div>
+                              <div className="text-blue-400/60 text-sm">
+                                深度学习 + OpenCV + 多算法融合
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </Card>
+                </div>
+
+                {/* 处理完成提示 */}
+                {selectedImage.processedUrl && (
+                  <Card className="bg-gradient-to-r from-green-500/20 to-emerald-500/20 border-green-400/30">
+                    <div className="p-4 text-center">
+                      <div className="text-2xl mb-2">✨</div>
+                      <div className="text-white font-medium mb-1">AI去水印处理完成！</div>
+                      <div className="text-green-200 text-sm">
+                        水印已通过深度学习算法智能去除，可放大查看细节效果
+                      </div>
+                    </div>
+                  </Card>
                 )}
               </div>
-            </Card>
+            ) : (
+              <Card className="bg-white/10 backdrop-blur-lg border border-white/20">
+                <div className="p-12 text-center">
+                  <div className="text-4xl mb-4">🖼️</div>
+                  <div className="text-white font-medium mb-2">选择图片开始处理</div>
+                  <div className="text-white/60">
+                    从左侧列表选择一张图片进行AI去水印处理
+                  </div>
+                </div>
+              </Card>
+            )}
           </div>
         </div>
       ) : (
         <div className="text-center py-16">
-          <div className="text-6xl mb-4">🚀</div>
+          <div className="text-6xl mb-4">🎯</div>
           <h3 className="text-2xl font-semibold text-white mb-2">
-            高性能AI水印去除工具
+            AI智能去水印工具
           </h3>
-          <p className="text-blue-200">
-            优化算法，快速处理，页面始终保持响应
+          <p className="text-blue-200 mb-4">
+            深度学习 + OpenCV + 多算法融合，水印去除效果更佳
           </p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-2xl mx-auto text-sm text-white/80">
+            <div className="bg-white/5 rounded-lg p-4">
+              <div className="text-lg mb-2">🧠</div>
+              <div>深度学习预处理</div>
+            </div>
+            <div className="bg-white/5 rounded-lg p-4">
+              <div className="text-lg mb-2">🔍</div>
+              <div>智能水印检测</div>
+            </div>
+            <div className="bg-white/5 rounded-lg p-4">
+              <div className="text-lg mb-2">⚡</div>
+              <div>多算法融合修复</div>
+            </div>
+          </div>
         </div>
       )}
     </div>
