@@ -1,4 +1,3 @@
-
 import { pipeline, env } from '@huggingface/transformers';
 
 // 配置 transformers.js
@@ -6,7 +5,6 @@ env.allowLocalModels = false;
 env.useBrowserCache = true;
 
 export class SDInpaintingProcessor {
-  private inpaintingPipeline: any = null;
   private segmentationPipeline: any = null;
 
   async initialize() {
@@ -17,13 +15,6 @@ export class SDInpaintingProcessor {
       this.segmentationPipeline = await pipeline(
         'image-segmentation',
         'Xenova/segformer-b0-finetuned-ade-512-512',
-        { device: 'webgpu' }
-      );
-
-      // 初始化文本到图像模型（用于inpainting）
-      this.inpaintingPipeline = await pipeline(
-        'text-to-image',
-        'Xenova/stable-diffusion-2-1-base',
         { device: 'webgpu' }
       );
 
