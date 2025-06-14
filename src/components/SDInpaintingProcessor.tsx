@@ -1,7 +1,13 @@
 
-import { WatermarkMark } from './WatermarkRemover';
-
 // Stable Diffusion Inpainting 处理器
+
+export interface WatermarkMark {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export const processWithSDInpainting = async (
   imageFile: File, 
   mark: WatermarkMark
