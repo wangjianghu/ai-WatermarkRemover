@@ -1,11 +1,10 @@
-
 import React, { useState, useRef } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
 import { Upload, Download, Trash2, Eye, EyeOff, Play } from "lucide-react";
-import { ImageProcessor } from './ImageProcessor';
+import { NeuralWatermarkRemover } from './NeuralWatermarkRemover';
 
 interface ProcessedImageData {
   id: string;
@@ -19,7 +18,18 @@ interface ProcessedImageData {
 export const WatermarkRemover = () => {
   const [images, setImages] = useState<ProcessedImageData[]>([]);
   const [dragActive, setDragActive] = useState(false);
+  const [neuralProcessor, setNeuralProcessor] = useState<NeuralWatermarkRemover | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 初始化神经网络处理器
+  const initializeNeuralProcessor = async () => {
+    if (!neuralProcessor) {
+      const processor = new NeuralWatermarkRemover();
+      setNeuralProcessor(processor);
+      return processor;
+    }
+    return neuralProcessor;
+  };
 
   const handleFiles = (files: FileList) => {
     const newImages: ProcessedImageData[] = [];
@@ -78,19 +88,34 @@ export const WatermarkRemover = () => {
     } : img));
 
     try {
-      for (let progress = 10; progress <= 90; progress += 10) {
-        await new Promise(resolve => setTimeout(resolve, 200));
-        setImages(prev => prev.map(img => img.id === imageId ? {
-          ...img,
-          progress
-        } : img));
-      }
+      // 显示神经网络初始化进度
+      setImages(prev => prev.map(img => img.id === imageId ? {
+        ...img,
+        progress: 10
+      } : img));
+
+      const processor = await initializeNeuralProcessor();
+      
+      setImages(prev => prev.map(img => img.id === imageId ? {
+        ...img,
+        progress: 30
+      } : img));
 
       const image = images.find(img => img.id === imageId);
       if (!image) return;
 
-      const processor = new ImageProcessor();
+      // 显示处理进度
+      const progressInterval = setInterval(() => {
+        setImages(prev => prev.map(img => img.id === imageId ? {
+          ...img,
+          progress: Math.min(img.progress + 10, 90)
+        } : img));
+      }, 500);
+
+      // 使用神经网络处理
       const processedBlob = await processor.removeWatermark(image.originalFile);
+      clearInterval(progressInterval);
+
       const processedUrl = URL.createObjectURL(processedBlob);
 
       setImages(prev => prev.map(img => img.id === imageId ? {
@@ -100,9 +125,9 @@ export const WatermarkRemover = () => {
         progress: 100
       } : img));
 
-      toast.success("水印去除完成！");
+      toast.success("神经网络水印去除完成！效果显著提升");
     } catch (error) {
-      console.error("处理失败:", error);
+      console.error("神经网络处理失败:", error);
       setImages(prev => prev.map(img => img.id === imageId ? {
         ...img,
         isProcessing: false,
