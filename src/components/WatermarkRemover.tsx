@@ -1,3 +1,4 @@
+
 import React, { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -477,10 +478,10 @@ const WatermarkRemover = () => {
         <Card className="lg:col-span-3">
           <CardContent className="space-y-4 p-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold">图片对比</h2>
+              <h2 className="text-lg font-semibold whitespace-nowrap">图片对比</h2>
               {selectedImage && (
                 <div className="flex items-center justify-between w-full ml-8">
-                  <div className="flex items-center justify-center space-x-2">
+                  <div className="flex-1 flex items-center justify-center space-x-2">
                     <Button variant="outline" size="icon" onClick={handleZoomIn}>
                       <ZoomIn className="h-4 w-4" />
                     </Button>
@@ -497,7 +498,7 @@ const WatermarkRemover = () => {
                   {selectedImage.processedUrl && (
                     <Button 
                       onClick={() => handleDownload(selectedImage)}
-                      className="flex items-center space-x-2 ml-4"
+                      className="flex items-center space-x-2"
                     >
                       <Download className="h-4 w-4" />
                       <span>下载处理后的图片</span>
@@ -509,53 +510,53 @@ const WatermarkRemover = () => {
             
             {selectedImage ? (
               <div className="w-full">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-2 gap-6">
                   <div className="flex flex-col items-center space-y-3">
                     <h3 className="text-md font-semibold">原始图片</h3>
                     <div 
-                      className="border-2 border-gray-200 rounded-lg overflow-hidden bg-gray-50 flex items-center justify-center"
+                      className="border-2 border-gray-200 rounded-lg bg-gray-50 overflow-auto"
                       style={{
-                        ...calculateDisplaySize(selectedImage.dimensions),
-                        minHeight: '300px'
+                        width: '100%',
+                        height: '400px'
                       }}
                     >
-                      <img
-                        src={selectedImage.url}
-                        alt={selectedImage.file.name}
-                        className="object-contain"
-                        style={{
-                          transform: `rotate(${selectedImage.rotation}deg) scale(${zoomLevel})`,
-                          maxWidth: '100%',
-                          maxHeight: '100%',
-                          transformOrigin: 'center center'
-                        }}
-                      />
+                      <div className="flex items-center justify-center min-h-full">
+                        <img
+                          src={selectedImage.url}
+                          alt={selectedImage.file.name}
+                          className="object-contain"
+                          style={{
+                            transform: `rotate(${selectedImage.rotation}deg) scale(${zoomLevel})`,
+                            transformOrigin: 'center center'
+                          }}
+                        />
+                      </div>
                     </div>
                   </div>
 
                   <div className="flex flex-col items-center space-y-3">
                     <h3 className="text-md font-semibold">处理结果</h3>
                     <div 
-                      className="border-2 border-gray-200 rounded-lg overflow-hidden bg-gray-50 flex items-center justify-center"
+                      className="border-2 border-gray-200 rounded-lg bg-gray-50 overflow-auto"
                       style={{
-                        ...calculateDisplaySize(selectedImage.dimensions),
-                        minHeight: '300px'
+                        width: '100%',
+                        height: '400px'
                       }}
                     >
                       {selectedImage.processedUrl ? (
-                        <img
-                          src={selectedImage.processedUrl}
-                          alt={`处理后的 ${selectedImage.file.name}`}
-                          className="object-contain"
-                          style={{
-                            transform: `rotate(${selectedImage.rotation}deg) scale(${zoomLevel})`,
-                            maxWidth: '100%',
-                            maxHeight: '100%',
-                            transformOrigin: 'center center'
-                          }}
-                        />
+                        <div className="flex items-center justify-center min-h-full">
+                          <img
+                            src={selectedImage.processedUrl}
+                            alt={`处理后的 ${selectedImage.file.name}`}
+                            className="object-contain"
+                            style={{
+                              transform: `rotate(${selectedImage.rotation}deg) scale(${zoomLevel})`,
+                              transformOrigin: 'center center'
+                            }}
+                          />
+                        </div>
                       ) : (
-                        <div className="flex flex-col items-center justify-center text-gray-500 space-y-3 p-4">
+                        <div className="flex flex-col items-center justify-center h-full text-gray-500 space-y-3 p-4">
                           <p className="text-center text-sm">请先处理图片以查看结果</p>
                           <Button 
                             onClick={() => handleRemoveWatermark(selectedImage)}
