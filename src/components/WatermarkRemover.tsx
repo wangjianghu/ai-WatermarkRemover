@@ -1053,7 +1053,7 @@ const WatermarkRemover = () => {
           height: `${Math.max(8, 12 / zoom)}px`,
           cursor
         }} />)}
-          </>}
+          </>
       </div>;
   };
 
@@ -1079,6 +1079,23 @@ const WatermarkRemover = () => {
   };
 
   const selectedImage = images.find(img => img.id === selectedImageId);
+  const handleDownload = (imageItem: ImageItem) => {
+    if (imageItem.processedUrl) {
+      const link = document.createElement("a");
+      link.href = imageItem.processedUrl;
+      link.download = `watermark_removed_${imageItem.file.name}`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      toast.success("图片已开始下载!", {
+        duration: 800
+      });
+    } else {
+      toast.error("请先去除水印", {
+        duration: 800
+      });
+    }
+  };
   return <div className="h-full flex">
       {/* Left Sidebar */}
       <div className="w-80 flex-shrink-0 border-r bg-white">
