@@ -733,11 +733,10 @@ const WatermarkRemover = () => {
                                   <img
                                     src={image.url}
                                     alt="原图"
-                                    className="cursor-pointer block w-full h-full object-contain"
+                                    className="cursor-pointer block max-w-full max-h-full object-contain"
                                     style={{
                                       transform: `scale(${originalZoom})`,
-                                      transformOrigin: 'center center',
-                                      objectFit: 'contain'
+                                      transformOrigin: 'center center'
                                     }}
                                     onClick={(e) => handleImageClick(e, image.id)}
                                   />
@@ -789,11 +788,10 @@ const WatermarkRemover = () => {
                                     <img
                                       src={image.processedUrl}
                                       alt="处理后"
-                                      className="block w-full h-full object-contain"
+                                      className="block max-w-full max-h-full object-contain"
                                       style={{
                                         transform: `scale(${processedZoom})`,
-                                        transformOrigin: 'center center',
-                                        objectFit: 'contain'
+                                        transformOrigin: 'center center'
                                       }}
                                     />
                                   </div>
