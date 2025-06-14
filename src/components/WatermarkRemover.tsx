@@ -180,7 +180,8 @@ const WatermarkRemover = () => {
   }, [isMarkingMode, images]);
 
   const getResizeHandle = (x: number, y: number, mark: WatermarkMark): 'nw' | 'ne' | 'sw' | 'se' | 'n' | 'e' | 's' | 'w' | null => {
-    const handleSize = 0.02;
+    // 根据缩放级别调整控制点的检测区域
+    const handleSize = Math.max(0.01, 0.02 / zoom);
     const handles = {
       'nw': { x: mark.x, y: mark.y },
       'ne': { x: mark.x + mark.width, y: mark.y },
@@ -215,7 +216,8 @@ const WatermarkRemover = () => {
         const mark = selectedImage.watermarkMark;
         let newMark = { ...mark };
 
-        const minSize = 0.015;
+        // 根据缩放级别调整最小尺寸
+        const minSize = Math.max(0.01, 0.015 / zoom);
 
         switch (resizeState.resizeHandle) {
           case 'se':
@@ -302,7 +304,7 @@ const WatermarkRemover = () => {
         }));
       }
     }
-  }, [isMarkingMode, dragState, resizeState, selectedMark, images]);
+  }, [isMarkingMode, dragState, resizeState, selectedMark, images, zoom]);
 
   const handleMouseUp = useCallback((event: React.MouseEvent<HTMLImageElement>, imageId: string) => {
     if (!isMarkingMode) return;
@@ -328,7 +330,9 @@ const WatermarkRemover = () => {
       const width = Math.abs(currentX - startX);
       const height = Math.abs(currentY - startY);
 
-      if (width > 0.015 && height > 0.015) {
+      // 根据缩放级别调整最小尺寸
+      const minSize = Math.max(0.01, 0.015 / zoom);
+      if (width > minSize && height > minSize) {
         setImages(prevImages =>
           prevImages.map(img =>
             img.id === imageId
@@ -347,7 +351,7 @@ const WatermarkRemover = () => {
       currentX: 0,
       currentY: 0
     });
-  }, [isMarkingMode, dragState, selectedMark]);
+  }, [isMarkingMode, dragState, selectedMark, zoom]);
 
   const clearWatermarkMark = (imageId: string) => {
     setImages(prevImages =>
@@ -940,53 +944,72 @@ const WatermarkRemover = () => {
 
     return (
       <div
-        className="absolute pointer-events-none transition-all duration-200"
+        className="absolute pointer-events-none transition-all duration-150 ease-out"
         style={{
           left: `${mark.x * 100}%`,
           top: `${mark.y * 100}%`,
           width: `${mark.width * 100}%`,
           height: `${mark.height * 100}%`,
+          transform: `scale(${zoom})`,
+          transformOrigin: 'top left'
         }}
       >
         {/* 微妙的背景覆盖 */}
         <div 
           className={`absolute inset-0 ${
-            selectedMark ? 'bg-blue-400' : 'bg-red-400'
-          } bg-opacity-5 backdrop-blur-[0.5px]`}
+            selectedMark ? 'bg-blue-500' : 'bg-red-500'
+          } bg-opacity-8 backdrop-blur-[0.5px] transition-colors duration-200`}
         />
         
-        {/* 优雅的虚线边框 */}
+        {/* 优雅的边框 */}
         <div 
           className={`absolute inset-0 border-2 border-dashed ${
-            selectedMark ? 'border-blue-400' : 'border-red-400'
-          } rounded-sm opacity-80`}
+            selectedMark ? 'border-blue-500' : 'border-red-500'
+          } rounded-sm opacity-90 transition-all duration-200`}
           style={{
-            borderWidth: '1.5px',
-            filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.1))'
+            borderWidth: `${Math.max(1, 2 / zoom)}px`,
+            filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.15))'
           }}
         />
         
-        {/* 小而精致的角标 */}
+        {/* 角标 */}
         <div 
-          className={`absolute -top-2 -right-2 w-4 h-4 ${
-            selectedMark ? 'bg-blue-500' : 'bg-red-500'
-          } rounded-full flex items-center justify-center shadow-sm`}
+          className={`absolute -top-3 -right-3 ${
+            selectedMark ? 'bg-blue-600' : 'bg-red-600'
+          } rounded-full flex items-center justify-center shadow-lg transition-all duration-200`}
+          style={{
+            width: `${Math.max(12, 16 / zoom)}px`,
+            height: `${Math.max(12, 16 / zoom)}px`,
+            fontSize: `${Math.max(8, 10 / zoom)}px`
+          }}
         >
-          <Sparkles className="w-2 h-2 text-white" />
+          <Sparkles className="text-white" style={{ width: '60%', height: '60%' }} />
         </div>
 
         {selectedMark && isMarkingMode && showInProcessed && (
           <>
-            {/* 精致的控制点 */}
-            <div className="absolute w-2 h-2 bg-blue-500 border border-white -top-1 -left-1 rounded-full pointer-events-auto hover:bg-blue-600 transition-colors cursor-nw-resize shadow-sm" />
-            <div className="absolute w-2 h-2 bg-blue-500 border border-white -top-1 -right-1 rounded-full pointer-events-auto hover:bg-blue-600 transition-colors cursor-ne-resize shadow-sm" />
-            <div className="absolute w-2 h-2 bg-blue-500 border border-white -bottom-1 -left-1 rounded-full pointer-events-auto hover:bg-blue-600 transition-colors cursor-sw-resize shadow-sm" />
-            <div className="absolute w-2 h-2 bg-blue-500 border border-white -bottom-1 -right-1 rounded-full pointer-events-auto hover:bg-blue-600 transition-colors cursor-se-resize shadow-sm" />
-            
-            <div className="absolute w-2 h-1.5 bg-blue-500 border border-white -top-0.5 left-1/2 transform -translate-x-1/2 rounded-full pointer-events-auto hover:bg-blue-600 transition-colors cursor-ns-resize shadow-sm" />
-            <div className="absolute w-1.5 h-2 bg-blue-500 border border-white -right-0.5 top-1/2 transform -translate-y-1/2 rounded-full pointer-events-auto hover:bg-blue-600 transition-colors cursor-ew-resize shadow-sm" />
-            <div className="absolute w-2 h-1.5 bg-blue-500 border border-white -bottom-0.5 left-1/2 transform -translate-x-1/2 rounded-full pointer-events-auto hover:bg-blue-600 transition-colors cursor-ns-resize shadow-sm" />
-            <div className="absolute w-1.5 h-2 bg-blue-500 border border-white -left-0.5 top-1/2 transform -translate-y-1/2 rounded-full pointer-events-auto hover:bg-blue-600 transition-colors cursor-ew-resize shadow-sm" />
+            {/* 精致的控制点 - 根据缩放调整大小 */}
+            {[
+              { pos: 'nw', style: { top: -1, left: -1 }, cursor: 'nw-resize' },
+              { pos: 'ne', style: { top: -1, right: -1 }, cursor: 'ne-resize' },
+              { pos: 'sw', style: { bottom: -1, left: -1 }, cursor: 'sw-resize' },
+              { pos: 'se', style: { bottom: -1, right: -1 }, cursor: 'se-resize' },
+              { pos: 'n', style: { top: -0.5, left: '50%', transform: 'translateX(-50%)' }, cursor: 'ns-resize' },
+              { pos: 'e', style: { right: -0.5, top: '50%', transform: 'translateY(-50%)' }, cursor: 'ew-resize' },
+              { pos: 's', style: { bottom: -0.5, left: '50%', transform: 'translateX(-50%)' }, cursor: 'ns-resize' },
+              { pos: 'w', style: { left: -0.5, top: '50%', transform: 'translateY(-50%)' }, cursor: 'ew-resize' }
+            ].map(({ pos, style, cursor }) => (
+              <div
+                key={pos}
+                className="absolute bg-blue-600 border-2 border-white rounded-full pointer-events-auto hover:bg-blue-700 hover:scale-110 transition-all duration-150 shadow-lg"
+                style={{
+                  ...style,
+                  width: `${Math.max(8, 12 / zoom)}px`,
+                  height: `${Math.max(8, 12 / zoom)}px`,
+                  cursor
+                }}
+              />
+            ))}
           </>
         )}
       </div>
@@ -1004,12 +1027,15 @@ const WatermarkRemover = () => {
     
     return (
       <div
-        className="absolute border-2 border-dashed border-blue-400 bg-blue-400 bg-opacity-5 pointer-events-none transition-all duration-75 rounded-sm"
+        className="absolute border-2 border-dashed border-blue-500 bg-blue-500 bg-opacity-8 pointer-events-none transition-all duration-75 rounded-sm"
         style={{
           left: `${left * 100}%`,
           top: `${top * 100}%`,
           width: `${width * 100}%`,
           height: `${height * 100}%`,
+          transform: `scale(${zoom})`,
+          transformOrigin: 'top left',
+          borderWidth: `${Math.max(1, 2 / zoom)}px`
         }}
       />
     );
@@ -1222,7 +1248,7 @@ const WatermarkRemover = () => {
                     <img
                       src={selectedImage.url}
                       alt="原图"
-                      className={`block object-contain ${
+                      className={`block object-contain transition-transform duration-200 ease-out ${
                         isMarkingMode ? 'cursor-crosshair' : ''
                       }`}
                       style={{
