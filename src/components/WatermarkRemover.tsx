@@ -2,33 +2,58 @@ import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { Upload } from 'lucide-react';
+import { Upload, Download } from 'lucide-react';
 import { toast } from 'sonner';
-import { ImageComparisonRow } from './ImageComparisonRow';
+import { ProcessedImage } from './ProcessedImage';
 
-export interface ImageItem {
+interface ImageItem {
   id: string;
   file: File;
   url: string;
   processedUrl: string | null;
+  rotation: number;
+  dimensions?: { width: number; height: number };
 }
+
+type ZoomLevel = number;
 
 const WatermarkRemover = () => {
   const [images, setImages] = useState<ImageItem[]>([]);
   const [progress, setProgress] = useState<number>(0);
+  const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [processingImageId, setProcessingImageId] = useState<string | null>(null);
+  const [showOriginal, setShowOriginal] = useState<Record<string, boolean>>({});
+
+  const loadImageDimensions = (file: File): Promise<{ width: number; height: number }> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        resolve({ width: img.naturalWidth, height: img.naturalHeight });
+      };
+      img.src = URL.createObjectURL(file);
+    });
+  };
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (files && files.length > 0) {
-      const newImages: ImageItem[] = Array.from(files).map((file) => ({
-        id: crypto.randomUUID(),
-        file: file,
-        url: URL.createObjectURL(file),
-        processedUrl: null,
-      }));
+      const newImages = await Promise.all(
+        Array.from(files).map(async (file) => {
+          const dimensions = await loadImageDimensions(file);
+          return {
+            id: crypto.randomUUID(),
+            file: file,
+            url: URL.createObjectURL(file),
+            processedUrl: null,
+            rotation: 0,
+            dimensions,
+          };
+        })
+      );
       setImages(prevImages => [...prevImages, ...newImages]);
+      if (newImages.length > 0 && !selectedImageId) {
+        setSelectedImageId(newImages[0].id);
+      }
       event.target.value = '';
     }
   };
@@ -329,8 +354,8 @@ const WatermarkRemover = () => {
       return;
     }
 
+    setSelectedImageId(imageItem.id);
     setIsProcessing(true);
-    setProcessingImageId(imageItem.id);
     setProgress(0);
 
     try {
@@ -355,8 +380,8 @@ const WatermarkRemover = () => {
       toast.error(`水印去除失败: ${error.message}`);
     } finally {
       setIsProcessing(false);
-      setProcessingImageId(null);
       setProgress(0);
+      setSelectedImageId(null);
     }
   };
 
@@ -374,65 +399,166 @@ const WatermarkRemover = () => {
     }
   };
 
+  const handleImageClick = (imageId: string) => {
+    setSelectedImageId(imageId);
+  };
+
+  const handleToggleView = (imageId: string) => {
+    setShowOriginal(prev => ({ ...prev, [imageId]: !prev[imageId] }));
+  };
+
   const handleRemoveImage = (imageId: string) => {
-    setImages(prevImages => prevImages.filter(img => img.id !== imageId));
+    setImages(prevImages => {
+      const newImages = prevImages.filter(img => img.id !== imageId);
+      if (selectedImageId === imageId) {
+        const newSelectedId = newImages.length > 0 ? newImages[0].id : null;
+        setSelectedImageId(newSelectedId);
+      }
+      return newImages;
+    });
+    setShowOriginal(prev => {
+      const newShowOriginal = { ...prev };
+      delete newShowOriginal[imageId];
+      return newShowOriginal;
+    });
+  };
+
+  const selectedImage = images.find(img => img.id === selectedImageId);
+
+  const calculateDisplaySize = (dimensions?: { width: number; height: number }) => {
+    if (!dimensions) return { width: 400, height: 300 };
+    
+    const maxWidth = 500;
+    const maxHeight = 400;
+    const { width, height } = dimensions;
+    
+    const aspectRatio = width / height;
+    
+    let displayWidth = maxWidth;
+    let displayHeight = maxWidth / aspectRatio;
+    
+    if (displayHeight > maxHeight) {
+      displayHeight = maxHeight;
+      displayWidth = maxHeight * aspectRatio;
+    }
+    
+    return {
+      width: displayWidth,
+      height: displayHeight
+    };
   };
 
   return (
-    <div className="h-full flex flex-col space-y-4 p-6 overflow-hidden">
-      <Card className="flex-shrink-0 bg-white/10 backdrop-blur-lg border border-white/20">
-        <CardContent className="p-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-white">AI智能水印去除</h2>
-            <div className="flex items-center gap-4">
-              <p className="text-sm text-white/70 hidden md:block">上传图片，立即体验魔法般的效果</p>
-              <input
-                type="file"
-                id="upload"
-                multiple
-                accept="image/*"
-                className="hidden"
-                onChange={handleFileUpload}
-                disabled={isProcessing}
-              />
-              <Button asChild disabled={isProcessing} className="bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white">
-                <label htmlFor="upload" className="flex items-center cursor-pointer">
-                  <Upload className="h-4 w-4 mr-2" />
-                  <span>上传图片</span>
-                </label>
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {isProcessing && progress > 0 && (
-        <div className="flex-shrink-0 px-4">
-          <Progress value={progress} className="w-full" />
-          <p className="text-center text-xs text-white/80 mt-1">正在处理中... {progress}%</p>
+    <div className="h-full flex flex-col">
+      {progress > 0 && isProcessing && (
+        <div className="flex-shrink-0 px-6 pt-6">
+          <Card>
+            <CardContent className="p-6">
+              <div className="w-full">
+                <Progress value={progress} />
+                <p className="text-center mt-2 text-sm text-gray-600">处理进度: {progress}%</p>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       )}
-
-      <div className="flex-1 overflow-y-auto space-y-4 -mr-4 pr-4">
-        {images.length > 0 ? (
-          images.map(image => (
-            <ImageComparisonRow
-              key={image.id}
-              image={image}
-              isProcessing={isProcessing && processingImageId === image.id}
-              onProcess={handleRemoveWatermark}
-              onDownload={handleDownload}
-              onRemove={handleRemoveImage}
-            />
-          ))
-        ) : (
-          <div className="flex items-center justify-center h-full text-white/50 border-2 border-dashed border-white/20 rounded-lg">
-            <div className="text-center">
-              <p className="text-lg mb-2">请上传图片开始使用</p>
-              <p className="text-sm text-white/40">上传后将在此处看到图片对比及处理结果</p>
+      
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-4 gap-6 p-6 min-h-0">
+        <Card className="flex flex-col">
+          <CardContent className="flex flex-col h-full p-4">
+            <div className="flex items-center justify-between mb-4 flex-shrink-0">
+              <h2 className="text-lg font-semibold">图片列表</h2>
+              <div>
+                <input
+                  type="file"
+                  id="upload"
+                  multiple
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleFileUpload}
+                />
+                <Button asChild disabled={isProcessing} size="sm">
+                  <label htmlFor="upload" className="flex items-center space-x-2 cursor-pointer">
+                    <Upload className="h-4 w-4" />
+                    <span>上传图片</span>
+                  </label>
+                </Button>
+              </div>
             </div>
-          </div>
-        )}
+            <div className="flex flex-col space-y-2 flex-1 overflow-y-auto">
+              {images.map(image => (
+                <div
+                  key={image.id}
+                  className={`flex items-center justify-between p-3 border rounded-md cursor-pointer transition-colors flex-shrink-0 ${
+                    selectedImageId === image.id ? 'bg-blue-50 border-blue-200' : 'hover:bg-gray-50'
+                  }`}
+                  onClick={() => handleImageClick(image.id)}
+                >
+                  <div className="flex-1 min-w-0">
+                    <span className="text-sm truncate block" title={image.file.name}>
+                      {image.file.name}
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      {image.processedUrl ? '已处理' : '未处理'}
+                    </span>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleRemoveWatermark(image);
+                    }}
+                    disabled={isProcessing}
+                    className="ml-2 flex-shrink-0"
+                  >
+                    {isProcessing && selectedImageId === image.id ? '处理中...' : '去水印'}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="lg:col-span-3 flex flex-col">
+          <CardContent className="flex flex-col h-full p-4">
+            <div className="flex items-center justify-between mb-4 flex-shrink-0">
+              <h2 className="text-lg font-semibold whitespace-nowrap">图片处理结果</h2>
+            </div>
+            
+            {images.length > 0 ? (
+              <div className="flex-1 min-h-0 overflow-y-auto p-1">
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-6">
+                  {images.map(image => (
+                    <ProcessedImage
+                      key={image.id}
+                      image={{
+                        id: image.id,
+                        originalFile: image.file,
+                        originalUrl: image.url,
+                        processedUrl: image.processedUrl,
+                        isProcessing: isProcessing && selectedImageId === image.id,
+                        progress: isProcessing && selectedImageId === image.id ? progress : 0,
+                      }}
+                      showOriginal={!!showOriginal[image.id]}
+                      onProcess={() => handleRemoveWatermark(image)}
+                      onRemove={() => handleRemoveImage(image.id)}
+                      onDownload={() => handleDownload(image)}
+                      onToggleView={() => handleToggleView(image.id)}
+                    />
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-center flex-1 text-gray-500 border-2 border-dashed border-gray-200 rounded-lg">
+                <div className="text-center">
+                  <p className="text-lg mb-2">请上传图片</p>
+                  <p className="text-sm text-gray-400">上传后将在此处看到图片处理卡片</p>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
