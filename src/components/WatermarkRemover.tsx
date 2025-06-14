@@ -1,3 +1,4 @@
+
 import React, { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -124,24 +125,24 @@ const WatermarkRemover = () => {
     }
     
     // 4. 局部对比度检测
-    const contrast = this.calculateLocalContrast(data, x, y, width, height);
+    const contrast = calculateLocalContrast(data, x, y, width, height);
     if (contrast > 60) {
       confidence += 0.3;
     }
     
     // 5. 边缘特征检测
-    const edgeStrength = this.calculateEdgeStrength(data, x, y, width, height);
+    const edgeStrength = calculateEdgeStrength(data, x, y, width, height);
     if (edgeStrength > 40) {
       confidence += 0.25;
     }
     
     // 6. 文字模式检测
-    if (this.detectTextPattern(data, x, y, width, height)) {
+    if (detectTextPattern(data, x, y, width, height)) {
       confidence += 0.35;
     }
     
     // 7. 位置权重 - 水印通常在特定位置
-    const positionWeight = this.getPositionWeight(x, y, width, height);
+    const positionWeight = getPositionWeight(x, y, width, height);
     confidence *= positionWeight;
     
     return Math.min(confidence, 1.0);
@@ -185,11 +186,13 @@ const WatermarkRemover = () => {
     let edgeCount = 0;
     const centerBrightness = patterns[Math.floor(patterns.length / 2)];
     
-    patterns.forEach(brightness => {
-      if (Math.abs(brightness - centerBrightness) > 50) {
-        edgeCount++;
-      }
-    });
+    if (centerBrightness !== undefined) {
+      patterns.forEach(brightness => {
+        if (brightness !== undefined && Math.abs(brightness - centerBrightness) > 50) {
+          edgeCount++;
+        }
+      });
+    }
     
     return edgeCount >= 3 && edgeCount <= patterns.length * 0.7;
   };
@@ -268,7 +271,7 @@ const WatermarkRemover = () => {
         
         if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
           const neighborIndex = (ny * width + nx) * 4;
-          const neighborConfidence = this.detectWatermark(data, nx, ny, width, height);
+          const neighborConfidence = detectWatermark(data, nx, ny, width, height);
           
           // 只使用非水印像素
           if (neighborConfidence < 0.3) {
@@ -297,15 +300,15 @@ const WatermarkRemover = () => {
       // 保守修复：使用最近的几个像素
       validPixels.sort((a, b) => a.distance - b.distance);
       const useCount = Math.min(4, validPixels.length);
-      repairedPixel = this.weightedAverage(validPixels.slice(0, useCount));
+      repairedPixel = weightedAverage(validPixels.slice(0, useCount));
     } else if (processingAlgorithm === 'aggressive') {
       // 激进修复：使用所有有效像素
-      repairedPixel = this.weightedAverage(validPixels);
+      repairedPixel = weightedAverage(validPixels);
     } else {
       // 增强修复：智能选择像素
       validPixels.sort((a, b) => b.weight - a.weight);
       const useCount = Math.min(Math.max(6, Math.floor(validPixels.length * 0.6)), validPixels.length);
-      repairedPixel = this.weightedAverage(validPixels.slice(0, useCount));
+      repairedPixel = weightedAverage(validPixels.slice(0, useCount));
     }
     
     return repairedPixel;
@@ -370,7 +373,7 @@ const WatermarkRemover = () => {
             
             // 如果没有手动标记，使用算法检测
             if (confidence === 0) {
-              confidence = this.detectWatermark(data, x, y, canvas.width, canvas.height);
+              confidence = detectWatermark(data, x, y, canvas.width, canvas.height);
             }
             
             // 根据算法类型调整阈值
@@ -392,7 +395,7 @@ const WatermarkRemover = () => {
         // 第二遍：修复水印像素
         watermarkPixels.forEach(({x, y, confidence}) => {
           const index = (y * canvas.width + x) * 4;
-          const repaired = this.repairPixel(data, x, y, canvas.width, canvas.height, confidence);
+          const repaired = repairPixel(data, x, y, canvas.width, canvas.height, confidence);
           
           if (repaired) {
             data[index] = repaired.r;
@@ -423,12 +426,12 @@ const WatermarkRemover = () => {
 
   const handleRemoveWatermark = async (imageItem: ImageItem) => {
     if (isProcessing) {
-      toast.error("请等待当前任务完成", { duration: 1500 });
+      toast.error("请等待当前任务完成", { duration: 1000 });
       return;
     }
 
     if (!imageItem?.file) {
-      toast.error("请先上传图片", { duration: 1500 });
+      toast.error("请先上传图片", { duration: 1000 });
       return;
     }
 
@@ -453,10 +456,10 @@ const WatermarkRemover = () => {
         )
       );
       
-      toast.success("水印去除完成!", { duration: 1500 });
+      toast.success("水印去除完成!", { duration: 1000 });
     } catch (error: any) {
       console.error("Error removing watermark:", error);
-      toast.error(`水印去除失败: ${error.message}`, { duration: 2000 });
+      toast.error(`水印去除失败: ${error.message}`, { duration: 1500 });
     } finally {
       setIsProcessing(false);
       setProgress(0);
@@ -472,9 +475,9 @@ const WatermarkRemover = () => {
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      toast.success("图片已开始下载!", { duration: 1500 });
+      toast.success("图片已开始下载!", { duration: 1000 });
     } else {
-      toast.error("请先去除水印", { duration: 1500 });
+      toast.error("请先去除水印", { duration: 1000 });
     }
   };
 
