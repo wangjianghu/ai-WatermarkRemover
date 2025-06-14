@@ -1280,15 +1280,33 @@ const WatermarkRemover = () => {
                         </div>
                         <div>
                           <h4 className="font-medium text-green-600 mb-1 text-xs">增强模式</h4>
-                          <p className="text-xs text-gray-700">平衡处理质量和效果，适合大部分水印</p>
+                          <ul className="text-xs space-y-1 text-gray-700">
+                            <li>• 📊 基于多特征检测算法</li>
+                            <li>• 🔍 智能水印置信度分析</li>
+                            <li>• 🎯 加权像素修复技术</li>
+                            <li>• ⚖️ 平衡质量与效果</li>
+                            <li>• 💎 适合大部分水印类型</li>
+                          </ul>
                         </div>
                         <div>
                           <h4 className="font-medium text-orange-600 mb-1 text-xs">保守模式</h4>
-                          <p className="text-xs text-gray-700">温和处理，避免过度修复，适合精细图像</p>
+                          <ul className="text-xs space-y-1 text-gray-700">
+                            <li>• 🛡️ 高阈值检测算法</li>
+                            <li>• 🎨 温和梯度修复技术</li>
+                            <li>• 🔒 严格边缘保护机制</li>
+                            <li>• 📐 精确纹理保持算法</li>
+                            <li>• 🎯 适合精细图像处理</li>
+                          </ul>
                         </div>
                         <div>
                           <h4 className="font-medium text-red-600 mb-1 text-xs">激进模式</h4>
-                          <p className="text-xs text-gray-700">强力去除，可能影响图像质量，适合顽固水印</p>
+                          <ul className="text-xs space-y-1 text-gray-700">
+                            <li>• ⚡ 低阈值检测算法</li>
+                            <li>• 🔥 强力像素替换技术</li>
+                            <li>• 💪 多轮迭代修复机制</li>
+                            <li>• 🎯 高强度水印去除</li>
+                            <li>• ⚠️ 可能影响图像细节</li>
+                          </ul>
                         </div>
                       </div>
                     </div>
