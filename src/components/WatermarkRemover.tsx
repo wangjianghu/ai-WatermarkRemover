@@ -1304,6 +1304,8 @@ const WatermarkRemover = () => {
       tooltipText = "请先标记水印位置";
     } else if (needsCompletion) {
       tooltipText = "请先确认完成水印标记";
+    } else if (isProcessing || isBatchProcessing) {
+      tooltipText = "请等待当前任务完成";
     }
 
     const buttonContent = (
@@ -1322,8 +1324,8 @@ const WatermarkRemover = () => {
       </Button>
     );
 
-    // Show tooltip only when marking or completion is needed
-    if (tooltipText && (needsMarking || needsCompletion)) {
+    // Show tooltip when disabled or when there are specific conditions
+    if (tooltipText && isDisabled) {
       return (
         <Tooltip>
           <TooltipTrigger asChild>
