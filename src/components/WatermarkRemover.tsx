@@ -1,476 +1,1238 @@
-import React, { useState, useRef, useCallback } from 'react';
-import { useDropzone } from 'react-dropzone';
-import { ImageProcessor } from './ImageProcessor';
-import { Wand2, Loader2, ZoomIn, ZoomOut } from 'lucide-react';
-import { useToast } from "@/components/ui/use-toast"
+import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Progress } from '@/components/ui/progress';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Slider } from '@/components/ui/slider';
+import { Upload, Download, Trash2, MapPin, RefreshCw, Settings, ZoomIn, ZoomOut, RotateCcw, Undo2 } from 'lucide-react';
+import { toast } from 'sonner';
 
-interface ProcessedImage {
+interface ImageItem {
   id: string;
+  file: File;
   url: string;
-  originalFile: File | null;
   processedUrl: string | null;
-  isProcessed: boolean;
-  watermarkArea: { x: number; y: number; width: number; height: number } | null;
+  rotation: number;
+  dimensions?: { width: number; height: number };
+  watermarkMark?: {x: number, y: number, width: number, height: number};
+  processCount: number;
+}
+
+interface WatermarkMark {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+interface DragState {
+  isDragging: boolean;
+  startX: number;
+  startY: number;
+  currentX: number;
+  currentY: number;
+}
+
+interface ResizeState {
+  isResizing: boolean;
+  resizeHandle: 'nw' | 'ne' | 'sw' | 'se' | 'n' | 'e' | 's' | 'w' | null;
+  startX: number;
+  startY: number;
 }
 
 const WatermarkRemover = () => {
-  const [images, setImages] = useState<ProcessedImage[]>([]);
-  const [selectedImage, setSelectedImage] = useState<ProcessedImage | null>(null);
-  const [processing, setProcessing] = useState(false);
-  const [processingProgress, setProcessingProgress] = useState(0);
-  const [zoomLevel, setZoomLevel] = useState(1);
+  const [images, setImages] = useState<ImageItem[]>([]);
+  const [progress, setProgress] = useState<number>(0);
+  const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [isMarkingMode, setIsMarkingMode] = useState(false);
+  const [processingAlgorithm, setProcessingAlgorithm] = useState<'enhanced' | 'conservative' | 'aggressive'>('enhanced');
+  const [markRadius, setMarkRadius] = useState(0.05);
+  const [zoom, setZoom] = useState<number>(1);
+  const [scrollPosition, setScrollPosition] = useState({ x: 0, y: 0 });
+  const [dragState, setDragState] = useState<DragState>({
+    isDragging: false,
+    startX: 0,
+    startY: 0,
+    currentX: 0,
+    currentY: 0
+  });
+  const [resizeState, setResizeState] = useState<ResizeState>({
+    isResizing: false,
+    resizeHandle: null,
+    startX: 0,
+    startY: 0
+  });
+  const [selectedMark, setSelectedMark] = useState<boolean>(false);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const originalScrollRef = useRef<HTMLDivElement>(null);
+  const processedScrollRef = useRef<HTMLDivElement>(null);
 
-  const [isDragging, setIsDragging] = useState(false);
-  const dragStart = useRef({ x: 0, y: 0 });
+  // Auto-select first image when images change and no image is selected
+  useEffect(() => {
+    if (images.length > 0 && !selectedImageId) {
+      setSelectedImageId(images[0].id);
+    }
+  }, [images, selectedImageId]);
 
-  const { toast } = useToast()
-
-  const onDrop = useCallback((acceptedFiles: File[]) => {
-    acceptedFiles.map((file) => {
-      const reader = new FileReader();
-
-      reader.onload = () => {
-        const newImage: ProcessedImage = {
-          id: file.name + Date.now(),
-          url: reader.result as string,
-          originalFile: file,
-          processedUrl: null,
-          isProcessed: false,
-          watermarkArea: null,
-        };
-        setImages((prevImages) => [...prevImages, newImage]);
+  const loadImageDimensions = (file: File): Promise<{ width: number; height: number }> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        resolve({ width: img.naturalWidth, height: img.naturalHeight });
       };
-
-      reader.readAsDataURL(file);
+      img.src = URL.createObjectURL(file);
     });
+  };
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (files && files.length > 0) {
+      const newImages = await Promise.all(
+        Array.from(files).map(async (file) => {
+          const dimensions = await loadImageDimensions(file);
+          return {
+            id: crypto.randomUUID(),
+            file: file,
+            url: URL.createObjectURL(file),
+            processedUrl: null,
+            rotation: 0,
+            dimensions,
+            watermarkMark: undefined,
+            processCount: 0,
+          };
+        })
+      );
+      setImages(prevImages => [...prevImages, ...newImages]);
+      event.target.value = '';
+    }
+  };
+
+  const syncScroll = useCallback((source: 'original' | 'processed', scrollLeft: number, scrollTop: number) => {
+    const targetRef = source === 'original' ? processedScrollRef : originalScrollRef;
+    if (targetRef.current) {
+      targetRef.current.scrollLeft = scrollLeft;
+      targetRef.current.scrollTop = scrollTop;
+    }
+    setScrollPosition({ x: scrollLeft, y: scrollTop });
   }, []);
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: {
-      'image/*': ['.jpeg', '.png', '.jpg'],
-    },
-  });
-
-  const handleImageClick = (image: ProcessedImage) => {
-    setSelectedImage(image);
+  const getImageCoordinates = (event: React.MouseEvent<HTMLImageElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+    const y = Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height));
+    return { x, y };
   };
 
-  const handleMouseDown = (e: React.MouseEvent) => {
+  const handleMouseDown = useCallback((event: React.MouseEvent<HTMLImageElement>, imageId: string) => {
+    if (!isMarkingMode) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const selectedImage = images.find(img => img.id === imageId);
     if (!selectedImage) return;
 
-    setIsDragging(true);
-    dragStart.current = { x: e.clientX, y: e.clientY };
-    e.stopPropagation();
-  };
+    const { x, y } = getImageCoordinates(event);
 
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isDragging || !selectedImage) return;
-
-    const deltaX = e.clientX - dragStart.current.x;
-    const deltaY = e.clientY - dragStart.current.y;
-
-    dragStart.current = { x: e.clientX, y: e.clientY };
-
-    setImages(prevImages => {
-      return prevImages.map(img => {
-        if (img.id === selectedImage.id) {
-          const currentArea = img.watermarkArea || { x: 0, y: 0, width: 100, height: 50 };
-          let newX = currentArea.x + deltaX / zoomLevel;
-          let newY = currentArea.y + deltaY / zoomLevel;
-
-          // 确保水印区域不超出图像边界
-          newX = Math.max(0, Math.min(newX, (img.originalFile ? 800 : 600) - currentArea.width));
-          newY = Math.max(0, Math.min(newY, 600 - currentArea.height));
-
-          return {
-            ...img,
-            watermarkArea: {
-              ...currentArea,
-              x: newX,
-              y: newY
-            }
-          };
-        }
-        return img;
-      });
-    });
-    e.stopPropagation();
-  };
-
-  const handleMouseUp = () => {
-    setIsDragging(false);
-  };
-
-  const renderMarkingOverlay = (image: ProcessedImage) => {
-    if (!image.watermarkArea || (selectedImage?.id === image.id && selectedImage.isProcessed)) {
-      return null;
+    if (selectedImage.watermarkMark) {
+      const mark = selectedImage.watermarkMark;
+      const handle = getResizeHandle(x, y, mark);
+      
+      if (handle) {
+        setResizeState({
+          isResizing: true,
+          resizeHandle: handle,
+          startX: x,
+          startY: y
+        });
+        setSelectedMark(true);
+        return;
+      }
+      
+      if (x >= mark.x && x <= mark.x + mark.width && y >= mark.y && y <= mark.y + mark.height) {
+        setSelectedMark(true);
+        setDragState({
+          isDragging: true,
+          startX: x - mark.x,
+          startY: y - mark.y,
+          currentX: x,
+          currentY: y
+        });
+        return;
+      }
     }
 
-    const { x, y, width, height } = image.watermarkArea;
-
-    return (
-      <>
-        {/* 半透明遮罩层 */}
-        <div
-          className="absolute inset-0 bg-black/20 pointer-events-none"
-          style={{
-            mask: `polygon(0% 0%, 0% 100%, ${x}px 100%, ${x}px ${y}px, ${x + width}px ${y}px, ${x + width}px ${y + height}px, ${x}px ${y + height}px, ${x}px 100%, 100% 100%, 100% 0%)`,
-            WebkitMask: `polygon(0% 0%, 0% 100%, ${x}px 100%, ${x}px ${y}px, ${x + width}px ${y}px, ${x + width}px ${y + height}px, ${x}px ${y + height}px, ${x}px 100%, 100% 100%, 100% 0%)`
-          }}
-        />
-        
-        {/* 主要选择框 - 使用虚线和柔和颜色 */}
-        <div
-          className="absolute border-2 border-dashed border-blue-400/80 bg-blue-100/10 backdrop-blur-[0.5px]"
-          style={{
-            left: x,
-            top: y,
-            width,
-            height,
-            boxShadow: '0 0 0 1px rgba(255, 255, 255, 0.3), inset 0 0 0 1px rgba(59, 130, 246, 0.2)'
-          }}
-          onMouseDown={handleMouseDown}
-        >
-          {/* 四个角的控制点 - 更小更精致 */}
-          {[
-            { position: 'top-left', cursor: 'nw-resize', top: -3, left: -3 },
-            { position: 'top-right', cursor: 'ne-resize', top: -3, right: -3 },
-            { position: 'bottom-left', cursor: 'sw-resize', bottom: -3, left: -3 },
-            { position: 'bottom-right', cursor: 'se-resize', bottom: -3, right: -3 }
-          ].map(({ position, cursor, ...style }) => (
-            <div
-              key={position}
-              className="absolute w-2 h-2 bg-white border border-blue-400 rounded-full shadow-sm hover:bg-blue-50 hover:scale-125 transition-all duration-150"
-              style={{
-                cursor,
-                ...style
-              }}
-              data-resize={position}
-            />
-          ))}
-
-          {/* 边缘中点控制点 - 更小 */}
-          {[
-            { position: 'top', cursor: 'n-resize', top: -3, left: '50%', transform: 'translateX(-50%)' },
-            { position: 'right', cursor: 'e-resize', right: -3, top: '50%', transform: 'translateY(-50%)' },
-            { position: 'bottom', cursor: 's-resize', bottom: -3, left: '50%', transform: 'translateX(-50%)' },
-            { position: 'left', cursor: 'w-resize', left: -3, top: '50%', transform: 'translateY(-50%)' }
-          ].map(({ position, cursor, ...style }) => (
-            <div
-              key={position}
-              className="absolute w-1.5 h-1.5 bg-white border border-blue-400 rounded-full shadow-sm hover:bg-blue-50 hover:scale-125 transition-all duration-150"
-              style={{
-                cursor,
-                ...style
-              }}
-              data-resize={position}
-            />
-          ))}
-
-          {/* 水印标识图标 */}
-          <div className="absolute -top-8 left-0 flex items-center gap-1 bg-white/90 backdrop-blur-sm px-2 py-1 rounded text-xs font-medium text-gray-700 shadow-sm border border-gray-200">
-            <div className="w-3 h-3 bg-gradient-to-br from-blue-400 to-blue-600 rounded-sm flex items-center justify-center">
-              <div className="w-1.5 h-1.5 bg-white rounded-sm opacity-80"></div>
-            </div>
-            <span>水印区域</span>
-          </div>
-        </div>
-
-        {/* 尺寸提示 */}
-        <div 
-          className="absolute bg-gray-800/80 backdrop-blur-sm text-white text-xs px-2 py-1 rounded pointer-events-none"
-          style={{
-            left: x + width + 8,
-            top: y,
-            transform: x + width + 120 > (image.originalFile ? 800 : 600) ? 'translateX(-100%) translateX(-' + (width + 16) + 'px)' : 'none'
-          }}
-        >
-          {Math.round(width)} × {Math.round(height)}
-        </div>
-      </>
+    setSelectedMark(false);
+    setImages(prevImages =>
+      prevImages.map(img =>
+        img.id === imageId ? { ...img, watermarkMark: undefined } : img
+      )
     );
+
+    setDragState({
+      isDragging: true,
+      startX: x,
+      startY: y,
+      currentX: x,
+      currentY: y
+    });
+  }, [isMarkingMode, images]);
+
+  const getResizeHandle = (x: number, y: number, mark: WatermarkMark): 'nw' | 'ne' | 'sw' | 'se' | 'n' | 'e' | 's' | 'w' | null => {
+    const handleSize = 0.015; // Reduced handle size for better precision
+    const handles = {
+      'nw': { x: mark.x, y: mark.y },
+      'ne': { x: mark.x + mark.width, y: mark.y },
+      'sw': { x: mark.x, y: mark.y + mark.height },
+      'se': { x: mark.x + mark.width, y: mark.y + mark.height },
+      'n': { x: mark.x + mark.width / 2, y: mark.y },
+      'e': { x: mark.x + mark.width, y: mark.y + mark.height / 2 },
+      's': { x: mark.x + mark.width / 2, y: mark.y + mark.height },
+      'w': { x: mark.x, y: mark.y + mark.height / 2 }
+    } as const;
+
+    for (const [handle, pos] of Object.entries(handles)) {
+      if (Math.abs(x - pos.x) < handleSize && Math.abs(y - pos.y) < handleSize) {
+        return handle as 'nw' | 'ne' | 'sw' | 'se' | 'n' | 'e' | 's' | 'w';
+      }
+    }
+    return null;
   };
 
-  const processWatermark = async (image: ProcessedImage) => {
-    if (!image.originalFile) {
-      console.error('No original file found for processing.');
+  const handleMouseMove = useCallback((event: React.MouseEvent<HTMLImageElement>, imageId: string) => {
+    if (!isMarkingMode) return;
+    if (!dragState.isDragging && !resizeState.isResizing) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const { x, y } = getImageCoordinates(event);
+
+    if (resizeState.isResizing && resizeState.resizeHandle) {
+      const selectedImage = images.find(img => img.id === imageId);
+      if (selectedImage?.watermarkMark) {
+        const mark = selectedImage.watermarkMark;
+        let newMark = { ...mark };
+
+        const minSize = 0.015; // Minimum mark size
+
+        switch (resizeState.resizeHandle) {
+          case 'se':
+            newMark.width = Math.max(minSize, x - mark.x);
+            newMark.height = Math.max(minSize, y - mark.y);
+            break;
+          case 'nw':
+            const newWidth = mark.width + (mark.x - x);
+            const newHeight = mark.height + (mark.y - y);
+            if (newWidth > minSize && newHeight > minSize) {
+              newMark.x = x;
+              newMark.y = y;
+              newMark.width = newWidth;
+              newMark.height = newHeight;
+            }
+            break;
+          case 'ne':
+            const neWidth = Math.max(minSize, x - mark.x);
+            const neHeight = mark.height + (mark.y - y);
+            if (neHeight > minSize) {
+              newMark.y = y;
+              newMark.width = neWidth;
+              newMark.height = neHeight;
+            }
+            break;
+          case 'sw':
+            const swWidth = mark.width + (mark.x - x);
+            const swHeight = Math.max(minSize, y - mark.y);
+            if (swWidth > minSize) {
+              newMark.x = x;
+              newMark.width = swWidth;
+              newMark.height = swHeight;
+            }
+            break;
+          case 'n':
+            const nHeight = mark.height + (mark.y - y);
+            if (nHeight > minSize) {
+              newMark.y = y;
+              newMark.height = nHeight;
+            }
+            break;
+          case 's':
+            newMark.height = Math.max(minSize, y - mark.y);
+            break;
+          case 'e':
+            newMark.width = Math.max(minSize, x - mark.x);
+            break;
+          case 'w':
+            const wWidth = mark.width + (mark.x - x);
+            if (wWidth > minSize) {
+              newMark.x = x;
+              newMark.width = wWidth;
+            }
+            break;
+        }
+
+        setImages(prevImages =>
+          prevImages.map(img =>
+            img.id === imageId ? { ...img, watermarkMark: newMark } : img
+          )
+        );
+      }
+    } else if (dragState.isDragging) {
+      if (selectedMark) {
+        const selectedImage = images.find(img => img.id === imageId);
+        if (selectedImage?.watermarkMark) {
+          const mark = selectedImage.watermarkMark;
+          const newX = Math.max(0, Math.min(1 - mark.width, x - dragState.startX));
+          const newY = Math.max(0, Math.min(1 - mark.height, y - dragState.startY));
+          
+          setImages(prevImages =>
+            prevImages.map(img =>
+              img.id === imageId 
+                ? { ...img, watermarkMark: { ...mark, x: newX, y: newY } }
+                : img
+            )
+          );
+        }
+      } else {
+        setDragState(prev => ({
+          ...prev,
+          currentX: x,
+          currentY: y
+        }));
+      }
+    }
+  }, [isMarkingMode, dragState, resizeState, selectedMark, images]);
+
+  const handleMouseUp = useCallback((event: React.MouseEvent<HTMLImageElement>, imageId: string) => {
+    if (!isMarkingMode) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (resizeState.isResizing) {
+      setResizeState({
+        isResizing: false,
+        resizeHandle: null,
+        startX: 0,
+        startY: 0
+      });
       return;
     }
 
-    setProcessing(true);
-    setProcessingProgress(0);
+    if (dragState.isDragging && !selectedMark) {
+      const { startX, startY, currentX, currentY } = dragState;
+      
+      const left = Math.min(startX, currentX);
+      const top = Math.min(startY, currentY);
+      const width = Math.abs(currentX - startX);
+      const height = Math.abs(currentY - startY);
 
-    const worker = new Worker(new URL('../../public/watermark-worker.js', import.meta.url));
-
-    worker.onmessage = (event) => {
-      if (event.data.type === 'progress') {
-        setProcessingProgress(event.data.progress);
-      } else if (event.data.type === 'completed') {
-        const processedImageData = event.data.result;
-
-        // Convert the processed image data back to a Blob
-        const canvas = document.createElement('canvas');
-        canvas.width = processedImageData.width;
-        canvas.height = processedImageData.height;
-        const ctx = canvas.getContext('2d');
-
-        if (ctx) {
-          const imgData = new ImageData(processedImageData.data, processedImageData.width, processedImageData.height);
-          ctx.putImageData(imgData, 0, 0);
-
-          canvas.toBlob((blob) => {
-            if (blob) {
-              const processedURL = URL.createObjectURL(blob);
-              setImages(prevImages =>
-                prevImages.map(img =>
-                  img.id === image.id ? { ...img, processedUrl: processedURL, isProcessed: true } : img
-                )
-              );
-              setSelectedImage(prevImage => prevImage && prevImage.id === image.id ? { ...prevImage, processedUrl: processedURL, isProcessed: true } : prevImage);
-              setProcessing(false);
-              setProcessingProgress(100);
-              toast({
-                title: "处理完成!",
-                description: "水印已成功去除🎉",
-              })
-            } else {
-              console.error('Failed to create blob from processed image data.');
-              setProcessing(false);
-              toast({
-                variant: "destructive",
-                title: "处理失败",
-                description: "无法创建处理后的图片文件",
-              })
-            }
-          }, 'image/png');
-        } else {
-          console.error('Could not get 2D context from canvas.');
-          setProcessing(false);
-          toast({
-            variant: "destructive",
-            title: "处理失败",
-            description: "无法获取Canvas 2D上下文",
-          })
-        }
-      } else if (event.data.type === 'error') {
-        console.error('Worker error:', event.data.error);
-        setProcessing(false);
-        toast({
-          variant: "destructive",
-          title: "处理失败",
-          description: `图片处理过程中发生错误: ${event.data.error}`,
-        })
+      if (width > 0.015 && height > 0.015) {
+        setImages(prevImages =>
+          prevImages.map(img =>
+            img.id === imageId
+              ? { ...img, watermarkMark: { x: left, y: top, width, height } }
+              : img
+          )
+        );
+        setSelectedMark(true);
       }
-    };
+    }
 
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    const img = new Image();
+    setDragState({
+      isDragging: false,
+      startX: 0,
+      startY: 0,
+      currentX: 0,
+      currentY: 0
+    });
+  }, [isMarkingMode, dragState, selectedMark]);
 
-    img.onload = () => {
-      canvas.width = img.width;
-      canvas.height = img.height;
-      ctx?.drawImage(img, 0, 0, img.width, img.height);
-      const imageData = ctx?.getImageData(0, 0, img.width, img.height);
-
-      if (imageData) {
-        worker.postMessage({
-          type: 'process',
-          imageData: imageData,
-          width: img.width,
-          height: img.height
-        });
-      } else {
-        console.error('Could not get image data from canvas.');
-        setProcessing(false);
-        toast({
-          variant: "destructive",
-          title: "处理失败",
-          description: "无法从Canvas获取图像数据",
-        })
-      }
-    };
-
-    img.onerror = () => {
-      console.error('Failed to load image for processing.');
-      setProcessing(false);
-      toast({
-        variant: "destructive",
-        title: "处理失败",
-        description: "无法加载图片进行处理",
-      })
-    };
-
-    img.src = image.url;
+  const clearWatermarkMark = (imageId: string) => {
+    setImages(prevImages =>
+      prevImages.map(img =>
+        img.id === imageId ? { ...img, watermarkMark: undefined } : img
+      )
+    );
+    setSelectedMark(false);
   };
 
-  const handleWatermarkAreaChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
+  const restoreToOriginal = (imageId: string) => {
+    setImages(prevImages =>
+      prevImages.map(img =>
+        img.id === imageId 
+          ? { 
+              ...img, 
+              processedUrl: null, 
+              processCount: 0,
+              watermarkMark: undefined 
+            } 
+          : img
+      )
+    );
+    setSelectedMark(false);
+    toast.success("已还原到原图状态", { duration: 800 });
+  };
 
-    if (!selectedImage) return;
+  // Enhanced watermark detection with better semi-transparent white text detection
+  const detectWatermark = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number): number => {
+    const index = (y * width + x) * 4;
+    const r = data[index];
+    const g = data[index + 1];
+    const b = data[index + 2];
+    const a = data[index + 3];
+    
+    let confidence = 0;
+    
+    // Enhanced semi-transparent white text detection
+    const isWhiteish = r > 200 && g > 200 && b > 200;
+    const isSemiTransparent = a > 50 && a < 250;
+    const brightness = (r + g + b) / 3;
+    
+    // High confidence for semi-transparent white/light colors
+    if (isWhiteish && isSemiTransparent) {
+      confidence += 0.8; // Very high confidence
+    }
+    
+    // Semi-transparent pixels with high brightness
+    if (brightness > 220 && isSemiTransparent) {
+      confidence += 0.7;
+    }
+    
+    // Enhanced red text detection
+    if (r > 150 && g < 100 && b < 100) {
+      confidence += 0.6;
+    }
+    
+    // Orange/yellow text detection
+    if (r > 180 && g > 100 && g < 200 && b < 100) {
+      confidence += 0.5;
+    }
+    
+    // General transparency check
+    if (a < 245) {
+      confidence += 0.4;
+    }
+    
+    // Edge detection for text boundaries
+    const edgeStrength = calculateEdgeStrength(data, x, y, width, height);
+    if (edgeStrength > 30) {
+      confidence += 0.3;
+    }
+    
+    // Color uniformity check (watermarks often have consistent colors)
+    const colorUniformity = checkColorUniformity(data, x, y, width, height);
+    if (colorUniformity > 0.7) {
+      confidence += 0.2;
+    }
+    
+    return Math.min(confidence, 1.0);
+  };
 
-    setImages(prevImages => {
-      return prevImages.map(img => {
-        if (img.id === selectedImage.id) {
-          const currentArea = img.watermarkArea || { x: 0, y: 0, width: 100, height: 50 };
-          return {
-            ...img,
-            watermarkArea: {
-              ...currentArea,
-              [name]: Number(value)
-            }
-          };
+  const calculateEdgeStrength = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number): number => {
+    const centerIndex = (y * width + x) * 4;
+    const centerBrightness = (data[centerIndex] + data[centerIndex + 1] + data[centerIndex + 2]) / 3;
+    
+    let maxDiff = 0;
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        
+        const nx = x + dx;
+        const ny = y + dy;
+        
+        if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+          const neighborIndex = (ny * width + nx) * 4;
+          const neighborBrightness = (data[neighborIndex] + data[neighborIndex + 1] + data[neighborIndex + 2]) / 3;
+          maxDiff = Math.max(maxDiff, Math.abs(centerBrightness - neighborBrightness));
         }
-        return img;
-      });
+      }
+    }
+    return maxDiff;
+  };
+
+  const checkColorUniformity = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number): number => {
+    const centerIndex = (y * width + x) * 4;
+    const centerR = data[centerIndex];
+    const centerG = data[centerIndex + 1];
+    const centerB = data[centerIndex + 2];
+    
+    let uniformCount = 0;
+    let totalCount = 0;
+    const radius = 2;
+    
+    for (let dy = -radius; dy <= radius; dy++) {
+      for (let dx = -radius; dx <= radius; dx++) {
+        const nx = x + dx;
+        const ny = y + dy;
+        
+        if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+          const nIndex = (ny * width + nx) * 4;
+          const colorDiff = Math.abs(data[nIndex] - centerR) + 
+                           Math.abs(data[nIndex + 1] - centerG) + 
+                           Math.abs(data[nIndex + 2] - centerB);
+          
+          if (colorDiff < 40) uniformCount++;
+          totalCount++;
+        }
+      }
+    }
+    
+    return totalCount > 0 ? uniformCount / totalCount : 0;
+  };
+
+  const getPositionWeight = (x: number, y: number, width: number, height: number): number => {
+    const normalizedX = x / width;
+    const normalizedY = y / height;
+    
+    // Bottom right corner (most common for watermarks)
+    if (normalizedX > 0.7 && normalizedY > 0.7) return 1.5;
+    // Other corners
+    if ((normalizedX < 0.3 || normalizedX > 0.7) && (normalizedY < 0.3 || normalizedY > 0.7)) return 1.2;
+    return 0.8;
+  };
+
+  const isInMarkedWatermarkArea = (x: number, y: number, mark?: WatermarkMark): boolean => {
+    if (!mark) return false;
+    return x >= mark.x && x <= mark.x + mark.width && y >= mark.y && y <= mark.y + mark.height;
+  };
+
+  // Enhanced edge smoothing function for AI optimization
+  const smoothEdges = (data: Uint8ClampedArray, width: number, height: number, region: {x: number, y: number, width: number, height: number}) => {
+    const regionLeft = Math.floor(region.x * width);
+    const regionTop = Math.floor(region.y * height);
+    const regionRight = Math.floor((region.x + region.width) * width);
+    const regionBottom = Math.floor((region.y + region.height) * height);
+    
+    // Apply Gaussian blur to edge pixels
+    const edgeWidth = 3; // pixels
+    
+    for (let y = regionTop; y < regionBottom; y++) {
+      for (let x = regionLeft; x < regionRight; x++) {
+        // Check if pixel is near edge
+        const isNearEdge = (
+          x - regionLeft < edgeWidth || 
+          regionRight - x < edgeWidth ||
+          y - regionTop < edgeWidth || 
+          regionBottom - y < edgeWidth
+        );
+        
+        if (isNearEdge) {
+          const smoothed = gaussianBlur(data, width, height, x, y, 1.5);
+          if (smoothed) {
+            const index = (y * width + x) * 4;
+            data[index] = smoothed.r;
+            data[index + 1] = smoothed.g;
+            data[index + 2] = smoothed.b;
+            data[index + 3] = smoothed.a;
+          }
+        }
+      }
+    }
+  };
+
+  const gaussianBlur = (data: Uint8ClampedArray, width: number, height: number, centerX: number, centerY: number, sigma: number) => {
+    const radius = Math.ceil(sigma * 2);
+    let totalR = 0, totalG = 0, totalB = 0, totalA = 0, totalWeight = 0;
+    
+    for (let dy = -radius; dy <= radius; dy++) {
+      for (let dx = -radius; dx <= radius; dx++) {
+        const x = centerX + dx;
+        const y = centerY + dy;
+        
+        if (x >= 0 && x < width && y >= 0 && y < height) {
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          const weight = Math.exp(-(distance * distance) / (2 * sigma * sigma));
+          
+          const index = (y * width + x) * 4;
+          totalR += data[index] * weight;
+          totalG += data[index + 1] * weight;
+          totalB += data[index + 2] * weight;
+          totalA += data[index + 3] * weight;
+          totalWeight += weight;
+        }
+      }
+    }
+    
+    return totalWeight > 0 ? {
+      r: Math.round(totalR / totalWeight),
+      g: Math.round(totalG / totalWeight),
+      b: Math.round(totalB / totalWeight),
+      a: Math.round(totalA / totalWeight)
+    } : null;
+  };
+
+  // Enhanced pixel repair with AI optimization
+  const repairPixel = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number, confidence: number) => {
+    const radius = Math.min(12, Math.max(6, Math.floor(confidence * 12))); // Increased radius
+    const validPixels: Array<{r: number, g: number, b: number, a: number, weight: number}> = [];
+    
+    // Collect pixels in multiple rings for better sampling
+    for (let ring = 1; ring <= 3; ring++) {
+      const ringRadius = radius * ring / 3;
+      for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 8) {
+        const dx = Math.round(Math.cos(angle) * ringRadius);
+        const dy = Math.round(Math.sin(angle) * ringRadius);
+        
+        const nx = x + dx;
+        const ny = y + dy;
+        
+        if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+          const neighborIndex = (ny * width + nx) * 4;
+          const neighborConfidence = detectWatermark(data, nx, ny, width, height);
+          
+          if (neighborConfidence < 0.1) { // Very strict threshold
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            const weight = 1 / (distance * distance + 0.1) / ring; // Reduce weight for outer rings
+            
+            validPixels.push({
+              r: data[neighborIndex],
+              g: data[neighborIndex + 1],
+              b: data[neighborIndex + 2],
+              a: data[neighborIndex + 3],
+              weight: weight
+            });
+          }
+        }
+      }
+    }
+    
+    if (validPixels.length === 0) return null;
+    
+    // Sort by weight and use best samples
+    validPixels.sort((a, b) => b.weight - a.weight);
+    const useCount = Math.min(20, validPixels.length);
+    
+    return weightedAverage(validPixels.slice(0, useCount));
+  };
+
+  const weightedAverage = (pixels: Array<{r: number, g: number, b: number, a: number, weight: number}>) => {
+    let totalR = 0, totalG = 0, totalB = 0, totalA = 0, totalWeight = 0;
+    
+    pixels.forEach(pixel => {
+      totalR += pixel.r * pixel.weight;
+      totalG += pixel.g * pixel.weight;
+      totalB += pixel.b * pixel.weight;
+      totalA += pixel.a * pixel.weight;
+      totalWeight += pixel.weight;
+    });
+    
+    return {
+      r: Math.round(totalR / totalWeight),
+      g: Math.round(totalG / totalWeight),
+      b: Math.round(totalB / totalWeight),
+      a: Math.round(totalA / totalWeight)
+    };
+  };
+
+  // Enhanced processing function with AI optimization
+  const processImageCanvas = async (imageFile: File, mark?: WatermarkMark, existingProcessedUrl?: string): Promise<Blob> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        if (!ctx) {
+          reject(new Error('无法获取Canvas上下文'));
+          return;
+        }
+
+        canvas.width = img.width;
+        canvas.height = img.height;
+        ctx.drawImage(img, 0, 0);
+        
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imageData.data;
+        
+        // Enhanced processing with 5 passes
+        for (let pass = 0; pass < 5; pass++) {
+          let processedPixels = 0;
+          const watermarkPixels: Array<{x: number, y: number, confidence: number}> = [];
+          
+          const step = pass < 3 ? 1 : 2; // More thorough in first 3 passes
+          
+          // Scan pixels for watermarks
+          for (let y = 0; y < canvas.height; y += step) {
+            for (let x = 0; x < canvas.width; x += step) {
+              const normalizedX = x / canvas.width;
+              const normalizedY = y / canvas.height;
+              
+              let confidence = 0;
+              
+              if (mark) {
+                if (isInMarkedWatermarkArea(normalizedX, normalizedY, mark)) {
+                  confidence = 0.98; // Very high confidence for marked areas
+                }
+              } else {
+                confidence = detectWatermark(data, x, y, canvas.width, canvas.height);
+                confidence *= getPositionWeight(x, y, canvas.width, canvas.height);
+              }
+              
+              // Enhanced detection for semi-transparent white text
+              const index = (y * canvas.width + x) * 4;
+              const r = data[index];
+              const g = data[index + 1];
+              const b = data[index + 2];
+              const a = data[index + 3];
+              
+              const isWhiteish = r > 200 && g > 200 && b > 200;
+              const isSemiTransparent = a > 50 && a < 250;
+              const brightness = (r + g + b) / 3;
+              
+              if (isWhiteish && isSemiTransparent && brightness > 220) {
+                confidence += 0.5; // Boost confidence for semi-transparent white
+              }
+              
+              let threshold = 0.2; // Lower threshold
+              if (processingAlgorithm === 'conservative') threshold = 0.35;
+              else if (processingAlgorithm === 'aggressive') threshold = 0.12;
+              
+              if (confidence > threshold) {
+                watermarkPixels.push({x, y, confidence});
+              }
+            }
+          }
+          
+          console.log(`Pass ${pass + 1}: 检测到 ${watermarkPixels.length} 个水印像素`);
+          
+          watermarkPixels.sort((a, b) => b.confidence - a.confidence);
+          
+          // Process pixels with enhanced replacement
+          watermarkPixels.forEach(({x, y, confidence}) => {
+            const index = (y * canvas.width + x) * 4;
+            const repaired = repairPixel(data, x, y, canvas.width, canvas.height, confidence);
+            
+            if (repaired) {
+              const blendFactor = Math.min(0.98, confidence + 0.3); // Up to 98% replacement
+              
+              data[index] = Math.round(data[index] * (1 - blendFactor) + repaired.r * blendFactor);
+              data[index + 1] = Math.round(data[index + 1] * (1 - blendFactor) + repaired.g * blendFactor);
+              data[index + 2] = Math.round(data[index + 2] * (1 - blendFactor) + repaired.b * blendFactor);
+              data[index + 3] = Math.round(data[index + 3] * (1 - blendFactor) + repaired.a * blendFactor);
+              processedPixels++;
+            }
+          });
+
+          console.log(`Pass ${pass + 1}: 修复了 ${processedPixels} 个水印像素`);
+        }
+        
+        // AI optimization: smooth edges in marked region
+        if (mark) {
+          smoothEdges(data, canvas.width, canvas.height, mark);
+          console.log('应用了AI边缘优化');
+        }
+        
+        ctx.putImageData(imageData, 0, 0);
+        
+        canvas.toBlob((blob) => {
+          if (blob) {
+            resolve(blob);
+          } else {
+            reject(new Error('无法生成处理后的图片'));
+          }
+        }, 'image/png', 1.0);
+      };
+      
+      img.onerror = () => reject(new Error('图片加载失败'));
+      img.src = existingProcessedUrl || URL.createObjectURL(imageFile);
     });
   };
 
-  return (
-    <div className="h-full flex bg-white">
-      {/* 左侧图片列表 */}
-      <div className="w-80 border-r bg-gray-50 flex-shrink-0 overflow-y-auto">
-        <div className="px-4 py-6">
-          <div
-            {...getRootProps()}
-            className={`relative border-2 border-dashed rounded-lg p-4 bg-white text-center cursor-pointer ${isDragActive ? 'border-blue-400 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
-              }`}
-          >
-            <input {...getInputProps()} />
-            <p className="text-sm text-gray-500">
-              将图片拖放到此处，或
-              <label htmlFor="file-upload" className="text-blue-600 hover:underline cursor-pointer">
-                选择文件
-              </label>
-            </p>
-          </div>
-        </div>
+  const handleRemoveWatermark = async (imageItem: ImageItem) => {
+    if (isProcessing) {
+      toast.error("请等待当前任务完成", { duration: 800 });
+      return;
+    }
 
-        <div className="space-y-2 px-4">
-          {images.map((image) => (
-            <div
-              key={image.id}
-              className={`relative rounded-lg overflow-hidden cursor-pointer transition-shadow hover:shadow-md ${selectedImage?.id === image.id ? 'shadow-lg border-2 border-blue-500' : 'shadow-sm border border-gray-200'
-                }`}
-              onClick={() => handleImageClick(image)}
-            >
-              <img
-                src={image.url}
-                alt="预览图"
-                className="block w-full h-20 object-cover"
+    if (!imageItem?.file) {
+      toast.error("请先上传图片", { duration: 800 });
+      return;
+    }
+
+    setIsProcessing(true);
+    setProgress(0);
+
+    try {
+      const progressInterval = setInterval(() => {
+        setProgress(prev => Math.min(prev + 10, 85));
+      }, 200);
+
+      const processedBlob = await processImageCanvas(
+        imageItem.file, 
+        imageItem.watermarkMark,
+        imageItem.processedUrl || undefined
+      );
+      
+      clearInterval(progressInterval);
+      setProgress(100);
+
+      const processedUrl = URL.createObjectURL(processedBlob);
+      setImages(prevImages =>
+        prevImages.map(img =>
+          img.id === imageItem.id 
+            ? { 
+                ...img, 
+                processedUrl: processedUrl,
+                processCount: img.processCount + 1
+              } 
+            : img
+        )
+      );
+      
+      // Auto-select the processed image
+      setSelectedImageId(imageItem.id);
+      
+      if (imageItem.processCount === 0) {
+        toast.success("水印去除完成！建议继续处理以获得更好效果", { duration: 1000 });
+      } else {
+        toast.success(`第${imageItem.processCount + 1}次处理完成！`, { duration: 800 });
+      }
+    } catch (error: any) {
+      console.error("Error removing watermark:", error);
+      toast.error(`水印去除失败: ${error.message}`, { duration: 1200 });
+    } finally {
+      setIsProcessing(false);
+      setProgress(0);
+    }
+  };
+
+  const handleDownload = (imageItem: ImageItem) => {
+    if (imageItem.processedUrl) {
+      const link = document.createElement("a");
+      link.href = imageItem.processedUrl;
+      link.download = `watermark_removed_${imageItem.file.name}`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      toast.success("图片已开始下载!", { duration: 800 });
+    } else {
+      toast.error("请先去除水印", { duration: 800 });
+    }
+  };
+
+  const handleImageListClick = (imageId: string) => {
+    setSelectedImageId(imageId);
+    setSelectedMark(false);
+  };
+
+  const handleRemoveImage = (imageId: string) => {
+    setImages(prevImages => {
+      const newImages = prevImages.filter(img => img.id !== imageId);
+      if (selectedImageId === imageId) {
+        const newSelectedId = newImages.length > 0 ? newImages[0].id : null;
+        setSelectedImageId(newSelectedId);
+      }
+      return newImages;
+    });
+    setSelectedMark(false);
+  };
+
+  const handleZoomIn = () => {
+    setZoom(prev => Math.min(prev * 1.2, 5));
+  };
+
+  const handleZoomOut = () => {
+    setZoom(prev => Math.max(prev / 1.2, 0.1));
+  };
+
+  const resetZoom = () => {
+    setZoom(1);
+  };
+
+  const renderWatermarkMark = (mark?: WatermarkMark, showInProcessed: boolean = true) => {
+    if (!mark || !showInProcessed) return null;
+
+    const getCursorStyle = (handle: string) => {
+      switch (handle) {
+        case 'nw': case 'se': return 'cursor-nw-resize';
+        case 'ne': case 'sw': return 'cursor-ne-resize';
+        case 'n': case 's': return 'cursor-ns-resize';
+        case 'e': case 'w': return 'cursor-ew-resize';
+        default: return 'cursor-move';
+      }
+    };
+
+    return (
+      <div
+        className={`absolute border-2 pointer-events-none ${
+          selectedMark ? 'border-blue-500 bg-blue-500' : 'border-red-500 bg-red-500'
+        } bg-opacity-20 transition-all duration-150`}
+        style={{
+          left: `${mark.x * 100}%`,
+          top: `${mark.y * 100}%`,
+          width: `${mark.width * 100}%`,
+          height: `${mark.height * 100}%`,
+        }}
+      >
+        {selectedMark && isMarkingMode && showInProcessed && (
+          <>
+            {/* Corner handles */}
+            <div className={`absolute w-3 h-3 bg-blue-500 border border-white -top-1.5 -left-1.5 rounded-sm pointer-events-auto hover:bg-blue-600 transition-colors ${getCursorStyle('nw')}`} />
+            <div className={`absolute w-3 h-3 bg-blue-500 border border-white -top-1.5 -right-1.5 rounded-sm pointer-events-auto hover:bg-blue-600 transition-colors ${getCursorStyle('ne')}`} />
+            <div className={`absolute w-3 h-3 bg-blue-500 border border-white -bottom-1.5 -left-1.5 rounded-sm pointer-events-auto hover:bg-blue-600 transition-colors ${getCursorStyle('sw')}`} />
+            <div className={`absolute w-3 h-3 bg-blue-500 border border-white -bottom-1.5 -right-1.5 rounded-sm pointer-events-auto hover:bg-blue-600 transition-colors ${getCursorStyle('se')}`} />
+            
+            {/* Edge handles */}
+            <div className={`absolute w-3 h-2 bg-blue-500 border border-white -top-1 left-1/2 transform -translate-x-1/2 rounded-sm pointer-events-auto hover:bg-blue-600 transition-colors ${getCursorStyle('n')}`} />
+            <div className={`absolute w-2 h-3 bg-blue-500 border border-white -right-1 top-1/2 transform -translate-y-1/2 rounded-sm pointer-events-auto hover:bg-blue-600 transition-colors ${getCursorStyle('e')}`} />
+            <div className={`absolute w-3 h-2 bg-blue-500 border border-white -bottom-1 left-1/2 transform -translate-x-1/2 rounded-sm pointer-events-auto hover:bg-blue-600 transition-colors ${getCursorStyle('s')}`} />
+            <div className={`absolute w-2 h-3 bg-blue-500 border border-white -left-1 top-1/2 transform -translate-y-1/2 rounded-sm pointer-events-auto hover:bg-blue-600 transition-colors ${getCursorStyle('w')}`} />
+          </>
+        )}
+      </div>
+    );
+  };
+
+  const renderDragPreview = () => {
+    if (!isMarkingMode || !dragState.isDragging || selectedMark) return null;
+
+    const { startX, startY, currentX, currentY } = dragState;
+    const left = Math.min(startX, currentX);
+    const top = Math.min(startY, currentY);
+    const width = Math.abs(currentX - startX);
+    const height = Math.abs(currentY - startY);
+    
+    return (
+      <div
+        className="absolute border-2 border-blue-500 bg-blue-500 bg-opacity-20 pointer-events-none transition-all duration-75"
+        style={{
+          left: `${left * 100}%`,
+          top: `${top * 100}%`,
+          width: `${width * 100}%`,
+          height: `${height * 100}%`,
+        }}
+      />
+    );
+  };
+
+  const selectedImage = images.find(img => img.id === selectedImageId);
+
+  return (
+    <div className="h-full flex">
+      {/* Left Sidebar */}
+      <div className="w-80 flex-shrink-0 border-r bg-white">
+        <div className="h-full flex flex-col p-4">
+          {/* Upload Section */}
+          <div className="space-y-4 flex-shrink-0">
+            <div className="text-center">
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={handleFileUpload}
+                className="hidden"
+                id="file-upload"
               />
-              {image.isProcessed && (
-                <div className="absolute inset-0 bg-green-500/20 flex items-center justify-center">
-                  <span className="text-white text-xs font-medium bg-green-600 px-2 py-1 rounded-full shadow-md">已处理</span>
-                </div>
-              )}
+              <label htmlFor="file-upload">
+                <Button variant="outline" className="w-full" asChild>
+                  <span className="cursor-pointer">
+                    <Upload className="h-4 w-4 mr-2" />
+                    上传图片
+                  </span>
+                </Button>
+              </label>
             </div>
-          ))}
+
+            {/* Algorithm Selection */}
+            <div className="flex items-center space-x-2">
+              <label className="text-sm font-medium whitespace-nowrap">处理算法</label>
+              <select
+                value={processingAlgorithm}
+                onChange={(e) => setProcessingAlgorithm(e.target.value as any)}
+                className="flex-1 p-2 border rounded-md text-sm"
+              >
+                <option value="enhanced">增强模式</option>
+                <option value="conservative">保守模式</option>
+                <option value="aggressive">激进模式</option>
+              </select>
+            </div>
+
+            <div className="bg-blue-50 p-3 rounded-lg text-sm text-blue-800">
+              <p className="font-medium mb-1">处理建议：</p>
+              <ul className="text-xs space-y-1">
+                <li>• 针对半透明白色水印已优化检测算法</li>
+                <li>• 建议多次处理以彻底去除顽固水印</li>
+                <li>• 可手动标记水印区域提高精度</li>
+                <li>• 激进模式适合处理明显水印</li>
+                <li>• AI算法自动优化减少失真</li>
+              </ul>
+            </div>
+          </div>
+          
+          <ScrollArea className="flex-1">
+            <div className="space-y-2">
+              {images.map(image => (
+                <div
+                  key={image.id}
+                  className={`flex items-center justify-between p-3 border rounded-md cursor-pointer transition-colors ${
+                    selectedImageId === image.id ? 'bg-blue-50 border-blue-200' : 'hover:bg-gray-50'
+                  }`}
+                  onClick={() => handleImageListClick(image.id)}
+                >
+                  <div className="flex-1 min-w-0">
+                    <span className="text-sm truncate block" title={image.file.name}>
+                      {image.file.name}
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      {image.processedUrl ? `已处理${image.processCount}次` : '未处理'}
+                      {image.watermarkMark && ' • 已标记'}
+                    </span>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleRemoveWatermark(image);
+                    }}
+                    disabled={isProcessing}
+                    className="ml-2 flex-shrink-0"
+                  >
+                    {isProcessing && selectedImageId === image.id ? '处理中...' : (image.processCount > 0 ? '继续处理' : '去水印')}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
         </div>
       </div>
 
-      {/* 主要内容区域 */}
-      <div className="flex-1 flex flex-col h-full">
+      {/* Main Content Area */}
+      <div className="flex-1 flex flex-col bg-gray-50 min-w-0">
+        <div className="flex items-center justify-between p-4 bg-white border-b flex-shrink-0">
+          <div className="flex items-center space-x-4">
+            <h2 className="text-lg font-semibold">图片处理结果</h2>
+          </div>
+          {selectedImage && (
+            <div className="flex items-center space-x-2">
+              <Button
+                variant={isMarkingMode ? "default" : "outline"}
+                size="sm"
+                onClick={() => {
+                  setIsMarkingMode(!isMarkingMode);
+                  setSelectedMark(false);
+                }}
+                className="text-xs"
+              >
+                <MapPin className="h-3 w-3 mr-1" />
+                {isMarkingMode ? '退出标记' : '标记水印'}
+              </Button>
+              {selectedImage.watermarkMark && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => clearWatermarkMark(selectedImage.id)}
+                  className="text-xs"
+                >
+                  清除标记
+                </Button>
+              )}
+              {selectedImage.processedUrl && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => restoreToOriginal(selectedImage.id)}
+                  className="text-xs"
+                >
+                  <Undo2 className="h-3 w-3 mr-1" />
+                  还原原图
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleRemoveWatermark(selectedImage)}
+                disabled={isProcessing}
+                className="text-xs"
+              >
+                <RefreshCw className="h-3 w-3 mr-1" />
+                {isProcessing ? '处理中...' : (selectedImage.processCount > 0 ? '继续处理' : '去水印')}
+              </Button>
+              {selectedImage.processedUrl && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleDownload(selectedImage)}
+                  className="text-xs"
+                >
+                  <Download className="h-3 w-3 mr-1" />
+                  下载
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleRemoveImage(selectedImage.id)}
+                className="text-xs"
+              >
+                <Trash2 className="h-3 w-3" />
+              </Button>
+            </div>
+          )}
+        </div>
+        
         {selectedImage ? (
-          <div className="flex-1 flex flex-col h-full">
-            {/* 顶部工具栏 */}
-            <div className="bg-gray-50 px-6 py-4 border-b flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <h3 className="font-medium text-gray-900">
-                  {selectedImage.isProcessed ? '处理后' : '原图'}
-                </h3>
-                
-                {/* 进度条移到标题右侧 */}
-                {processing && selectedImage && !selectedImage.isProcessed && (
-                  <div className="flex items-center gap-2">
-                    <div className="w-32 bg-gray-200 rounded-full h-2 overflow-hidden">
-                      <div 
-                        className="h-full bg-gradient-to-r from-blue-500 to-purple-600 transition-all duration-300 ease-out"
-                        style={{ width: `${processingProgress}%` }}
-                      />
+          <div className="flex-1 grid grid-cols-2 gap-4 p-4 min-h-0 overflow-hidden">
+            {/* Original Image */}
+            <div className="flex flex-col min-h-0">
+              <div className="flex items-center justify-between mb-2 flex-shrink-0">
+                <div className="flex items-center space-x-4">
+                  <span className="text-sm font-medium text-gray-600">原图</span>
+                  {/* Progress Bar moved here */}
+                  {isProcessing && (
+                    <div className="flex items-center space-x-2">
+                      <Progress value={progress} className="w-20 h-2" />
+                      <span className="text-xs text-gray-500">{progress}%</span>
                     </div>
-                    <span className="text-sm text-gray-600 min-w-[3rem]">{processingProgress}%</span>
-                  </div>
-                )}
-              </div>
-
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setZoomLevel(prev => Math.min(prev + 0.25, 3))}
-                    disabled={zoomLevel >= 3}
-                    className="p-2 rounded-lg bg-white border border-gray-200 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  )}
+                </div>
+                <div className="flex items-center space-x-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleZoomOut}
+                    className="h-6 w-6 p-0"
                   >
-                    <ZoomIn className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => setZoomLevel(prev => Math.max(prev - 0.25, 0.25))}
-                    disabled={zoomLevel <= 0.25}
-                    className="p-2 rounded-lg bg-white border border-gray-200 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    <ZoomOut className="h-3 w-3" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={resetZoom}
+                    className="h-6 px-2 text-xs"
                   >
-                    <ZoomOut className="w-4 h-4" />
-                  </button>
-                  {/* 缩放比例显示移到放大按钮后 */}
-                  <span className="text-sm text-gray-600 min-w-[3rem]">
-                    {Math.round(zoomLevel * 100)}%
+                    <RotateCcw className="h-3 w-3" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleZoomIn}
+                    className="h-6 w-6 p-0"
+                  >
+                    <ZoomIn className="h-3 w-3" />
+                  </Button>
+                  {/* Zoom percentage moved here */}
+                  <span className="text-xs text-gray-500 ml-2">
+                    {Math.round(zoom * 100)}%
                   </span>
                 </div>
-
-                {!selectedImage.isProcessed && (
-                  <button
-                    onClick={() => processWatermark(selectedImage)}
-                    disabled={processing || !selectedImage.watermarkArea}
-                    className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:from-blue-700 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                  >
-                    {processing ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        处理中...
-                      </>
-                    ) : (
-                      <>
-                        <Wand2 className="w-4 h-4" />
-                        开始处理
-                      </>
-                    )}
-                  </button>
-                )}
+              </div>
+              <div 
+                ref={originalScrollRef}
+                className="flex-1 relative bg-white rounded-lg border overflow-auto min-h-0"
+                onScroll={(e) => {
+                  const target = e.target as HTMLDivElement;
+                  syncScroll('original', target.scrollLeft, target.scrollTop);
+                }}
+              >
+                <div className="p-4 flex items-center justify-center min-h-full">
+                  <div className="relative">
+                    <img
+                      src={selectedImage.url}
+                      alt="原图"
+                      className={`block object-contain ${
+                        isMarkingMode ? 'cursor-crosshair' : ''
+                      }`}
+                      style={{
+                        transform: `scale(${zoom})`,
+                        transformOrigin: 'center center'
+                      }}
+                      onMouseDown={(e) => handleMouseDown(e, selectedImage.id)}
+                      onMouseMove={(e) => handleMouseMove(e, selectedImage.id)}
+                      onMouseUp={(e) => handleMouseUp(e, selectedImage.id)}
+                      draggable={false}
+                    />
+                    {renderWatermarkMark(selectedImage.watermarkMark, true)}
+                    {renderDragPreview()}
+                  </div>
+                </div>
               </div>
             </div>
-
-            {/* 图片预览区域 */}
-            <div className="flex-1 overflow-auto bg-gray-100">
-              <div className="p-6">
-                <div 
-                  className="relative inline-block bg-white rounded-lg shadow-lg overflow-hidden"
-                  style={{
-                    transform: `scale(${zoomLevel})`,
-                    transformOrigin: 'top left'
-                  }}
-                >
-                  <img
-                    src={selectedImage.isProcessed ? selectedImage.processedUrl : selectedImage.url}
-                    alt="预览图片"
-                    className="block max-w-none"
-                    style={{
-                      width: selectedImage.originalFile ? '800px' : '600px',
-                      height: 'auto'
-                    }}
-                    onMouseMove={handleMouseMove}
-                    onMouseUp={handleMouseUp}
-                    onMouseLeave={handleMouseUp}
-                  />
-                  
-                  {/* 只在未处理的图片上显示标记矩形 */}
-                  {!selectedImage.isProcessed && renderMarkingOverlay(selectedImage)}
+            
+            {/* Processed Image */}
+            <div className="flex flex-col min-h-0">
+              <div className="flex items-center justify-between mb-2 flex-shrink-0">
+                <span className="text-sm font-medium text-gray-600">处理后</span>
+                <div className="flex items-center space-x-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleZoomOut}
+                    className="h-6 w-6 p-0"
+                    disabled={!selectedImage.processedUrl}
+                  >
+                    <ZoomOut className="h-3 w-3" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={resetZoom}
+                    className="h-6 px-2 text-xs"
+                    disabled={!selectedImage.processedUrl}
+                  >
+                    <RotateCcw className="h-3 w-3" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleZoomIn}
+                    className="h-6 w-6 p-0"
+                    disabled={!selectedImage.processedUrl}
+                  >
+                    <ZoomIn className="h-3 w-3" />
+                  </Button>
+                  <span className="text-xs text-gray-500 ml-2">
+                    {Math.round(zoom * 100)}%
+                  </span>
                 </div>
+              </div>
+              <div 
+                ref={processedScrollRef}
+                className="flex-1 relative bg-white rounded-lg border overflow-auto min-h-0"
+                onScroll={(e) => {
+                  const target = e.target as HTMLDivElement;
+                  syncScroll('processed', target.scrollLeft, target.scrollTop);
+                }}
+              >
+                {selectedImage.processedUrl ? (
+                  <div className="p-4 flex items-center justify-center min-h-full">
+                    <div className="relative">
+                      <img
+                        src={selectedImage.processedUrl}
+                        alt="处理后"
+                        className="block object-contain"
+                        style={{
+                          transform: `scale(${zoom})`,
+                          transformOrigin: 'center center'
+                        }}
+                        draggable={false}
+                      />
+                      {/* No watermark marking in processed image for clean preview */}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="absolute inset-0 flex items-center justify-center text-gray-400 text-sm">
+                    {isProcessing ? (
+                      <div className="text-center">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-2"></div>
+                        <div className="text-xs">正在处理...</div>
+                      </div>
+                    ) : (
+                      '等待处理'
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           </div>
         ) : (
-          <div className="flex-1 flex items-center justify-center bg-gray-100">
-            <p className="text-gray-500 text-lg">请选择或上传一张图片开始处理</p>
+          <div className="flex-1 flex items-center justify-center text-gray-500">
+            <div className="text-center">
+              <p className="text-lg mb-2">请从左侧列表中选择一张图片进行处理</p>
+              <p className="text-sm text-gray-400">上传后将在此处看到图片对比</p>
+            </div>
           </div>
         )}
       </div>
