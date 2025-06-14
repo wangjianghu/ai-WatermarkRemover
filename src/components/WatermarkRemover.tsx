@@ -849,65 +849,6 @@ const WatermarkRemover = () => {
       img.src = existingProcessedUrl || URL.createObjectURL(imageFile);
     });
   };
-  const handleRemoveWatermark = async (imageItem: ImageItem) => {
-    if (isProcessing || isBatchProcessing) {
-      toast.error("请等待当前任务完成", {
-        duration: 800
-      });
-      return;
-    }
-    if (!imageItem?.file) {
-      toast.error("请先上传图片", {
-        duration: 800
-      });
-      return;
-    }
-
-    // Check if in marking mode but no watermark mark is set
-    if (isMarkingMode && !imageItem.watermarkMark) {
-      toast.error("请先完成标记", {
-        duration: 800
-      });
-      return;
-    }
-
-    setIsProcessing(true);
-    setProgress(0);
-    try {
-      const progressInterval = setInterval(() => {
-        setProgress(prev => Math.min(prev + 10, 85));
-      }, 200);
-      const processedBlob = await processImageCanvas(imageItem.file, imageItem.watermarkMark, imageItem.processedUrl || undefined);
-      clearInterval(progressInterval);
-      setProgress(100);
-      const processedUrl = URL.createObjectURL(processedBlob);
-      setImages(prevImages => prevImages.map(img => img.id === imageItem.id ? {
-        ...img,
-        processedUrl: processedUrl,
-        processCount: img.processCount + 1
-      } : img));
-
-      // Auto-select the processed image
-      setSelectedImageId(imageItem.id);
-      if (imageItem.processCount === 0) {
-        toast.success("水印去除完成！建议继续处理以获得更好效果", {
-          duration: 1000
-        });
-      } else {
-        toast.success(`第${imageItem.processCount + 1}次处理完成！`, {
-          duration: 800
-        });
-      }
-    } catch (error: any) {
-      console.error("Error removing watermark:", error);
-      toast.error(`水印去除失败: ${error.message}`, {
-        duration: 1200
-      });
-    } finally {
-      setIsProcessing(false);
-      setProgress(0);
-    }
-  };
 
   // Add batch processing function
   const handleBatchProcess = async () => {
@@ -918,24 +859,13 @@ const WatermarkRemover = () => {
       return;
     }
 
-    // Filter images that can be processed
-    const imagesToProcess = images.filter(img => {
-      if (isMarkingMode) {
-        return img.watermarkMark; // Only process images with watermark marks in marking mode
-      }
-      return true; // Process all images in auto mode
-    });
+    // 只处理已标记水印位置的图片
+    const imagesToProcess = images.filter(img => img.watermarkMark);
 
     if (imagesToProcess.length === 0) {
-      if (isMarkingMode) {
-        toast.error("请先为图片标记水印区域", {
-          duration: 800
-        });
-      } else {
-        toast.error("没有可处理的图片", {
-          duration: 800
-        });
-      }
+      toast.error("请先为图片手动标记水印位置", {
+        duration: 1000
+      });
       return;
     }
 
@@ -943,7 +873,7 @@ const WatermarkRemover = () => {
     setBatchProgress({});
     
     try {
-      toast.info(`开始批量处理 ${imagesToProcess.length} 张图片`, {
+      toast.info(`开始批量处理 ${imagesToProcess.length} 张已标记的图片`, {
         duration: 1000
       });
 
@@ -1243,16 +1173,16 @@ const WatermarkRemover = () => {
             {images.length > 0 && (
               <Button 
                 onClick={handleBatchProcess} 
-                disabled={isProcessing || isBatchProcessing}
+                disabled={isProcessing || isBatchProcessing || images.filter(img => img.watermarkMark).length === 0}
                 className="w-full"
                 variant="default"
               >
                 <Play className="h-4 w-4 mr-2" />
-                {isBatchProcessing ? '批量处理中...' : '批量处理所有图片'}
+                {isBatchProcessing ? '批量处理中...' : `批量处理已标记图片 (${images.filter(img => img.watermarkMark).length})`}
               </Button>
             )}
 
-            {/* Algorithm Selection - 修改间距为12px */}
+            {/* Algorithm Selection */}
             <div className="flex items-center space-x-2">
               <label className="text-sm font-medium whitespace-nowrap">处理算法</label>
               <div className="flex items-center space-x-2 flex-1">
@@ -1307,7 +1237,7 @@ const WatermarkRemover = () => {
             </div>
           </div>
           
-          {/* 图片列表 - 添加 pt-3 来创建12px间距 */}
+          {/* 图片列表 */}
           <ScrollArea className="flex-1 pt-3">
             <div className="space-y-2">
               {images.map(image => <div key={image.id} className={`flex items-center justify-between p-3 border rounded-md cursor-pointer transition-colors ${selectedImageId === image.id ? 'bg-blue-50 border-blue-200' : 'hover:bg-gray-50'}`} onClick={() => handleImageListClick(image.id)}>
@@ -1317,7 +1247,7 @@ const WatermarkRemover = () => {
                     </span>
                     <span className="text-xs text-gray-500">
                       {image.processedUrl ? `已处理${image.processCount}次` : '未处理'}
-                      {image.watermarkMark && ' • 已标记'}
+                      {image.watermarkMark ? ' • 已标记' : ' • 未标记'}
                       {isBatchProcessing && batchProgress[image.id] !== undefined && (
                         <>
                           {batchProgress[image.id] === -1 ? ' • 处理失败' : 
@@ -1328,11 +1258,19 @@ const WatermarkRemover = () => {
                     </span>
                   </div>
                   <div className="flex items-center space-x-2 ml-2 flex-shrink-0">
-                    <Button variant="outline" size="sm" onClick={e => {
-                      e.stopPropagation();
-                      handleRemoveWatermark(image);
-                    }} disabled={isProcessing || isBatchProcessing}>
-                      {(isProcessing || isBatchProcessing) && selectedImageId === image.id ? '处理中...' : image.processCount > 0 ? '继续处理' : '去水印'}
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={e => {
+                        e.stopPropagation();
+                        handleRemoveWatermark(image);
+                      }} 
+                      disabled={isProcessing || isBatchProcessing || !image.watermarkMark}
+                      title={!image.watermarkMark ? "请先标记水印位置" : ""}
+                    >
+                      {(isProcessing || isBatchProcessing) && selectedImageId === image.id ? '处理中...' : 
+                       !image.watermarkMark ? '需标记' :
+                       image.processCount > 0 ? '继续处理' : '去水印'}
                     </Button>
                     <Button variant="outline" size="sm" onClick={e => {
                       e.stopPropagation();
@@ -1378,9 +1316,18 @@ const WatermarkRemover = () => {
                   <Undo2 className="h-3 w-3 mr-1" />
                   还原原图
                 </Button>}
-              <Button variant="outline" size="sm" onClick={() => handleRemoveWatermark(selectedImage)} disabled={isProcessing || isBatchProcessing} className="text-xs">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => handleRemoveWatermark(selectedImage)} 
+                disabled={isProcessing || isBatchProcessing || !selectedImage.watermarkMark}
+                className="text-xs"
+                title={!selectedImage.watermarkMark ? "请先标记水印位置" : ""}
+              >
                 <RefreshCw className="h-3 w-3 mr-1" />
-                {isProcessing ? '处理中...' : selectedImage.processCount > 0 ? '继续处理' : '去水印'}
+                {isProcessing ? '处理中...' : 
+                 !selectedImage.watermarkMark ? '需标记' :
+                 selectedImage.processCount > 0 ? '继续处理' : '去水印'}
               </Button>
               <Button variant="outline" size="sm" onClick={() => handleDownload(selectedImage)} className="text-xs" disabled={isBatchProcessing}>
                 <Download className="h-3 w-3 mr-1" />
