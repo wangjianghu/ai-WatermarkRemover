@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -672,6 +673,15 @@ const WatermarkRemover = () => {
           <h2 className="text-lg font-semibold">图片处理结果</h2>
           {selectedImage && (
             <div className="flex items-center space-x-2">
+              <Button
+                variant={isMarkingMode ? "default" : "outline"}
+                size="sm"
+                onClick={() => setIsMarkingMode(!isMarkingMode)}
+                className="text-xs"
+              >
+                <MapPin className="h-3 w-3 mr-1" />
+                {isMarkingMode ? '退出标记' : '手动标记水印'}
+              </Button>
               {selectedImage.watermarkMarks && selectedImage.watermarkMarks.length > 0 && (
                 <Button
                   variant="ghost"
@@ -759,13 +769,13 @@ const WatermarkRemover = () => {
                   </Button>
                 </div>
               </div>
-              <div className="flex-1 relative bg-white rounded-lg border overflow-hidden min-h-0">
-                <div className="absolute inset-0 flex items-center justify-center p-4">
-                  <div className="relative max-w-full max-h-full">
+              <div className="flex-1 relative bg-white rounded-lg border overflow-auto min-h-0">
+                <div className="p-4 flex items-center justify-center min-h-full">
+                  <div className="relative">
                     <img
                       src={selectedImage.url}
                       alt="原图"
-                      className={`block w-auto h-auto max-w-full max-h-full object-contain ${
+                      className={`block object-contain ${
                         isMarkingMode ? 'cursor-crosshair' : ''
                       }`}
                       style={{
@@ -818,14 +828,14 @@ const WatermarkRemover = () => {
                   </Button>
                 </div>
               </div>
-              <div className="flex-1 relative bg-white rounded-lg border overflow-hidden min-h-0">
+              <div className="flex-1 relative bg-white rounded-lg border overflow-auto min-h-0">
                 {selectedImage.processedUrl ? (
-                  <div className="absolute inset-0 flex items-center justify-center p-4">
-                    <div className="relative max-w-full max-h-full">
+                  <div className="p-4 flex items-center justify-center min-h-full">
+                    <div className="relative">
                       <img
                         src={selectedImage.processedUrl}
                         alt="处理后"
-                        className={`block w-auto h-auto max-w-full max-h-full object-contain ${
+                        className={`block object-contain ${
                           isMarkingMode ? 'cursor-crosshair' : ''
                         }`}
                         style={{
