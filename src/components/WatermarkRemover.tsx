@@ -728,22 +728,20 @@ const WatermarkRemover = () => {
                           </div>
                           <div className="relative bg-gray-50 rounded-lg overflow-hidden aspect-video">
                             <ScrollArea className="w-full h-full">
-                              <div className="relative inline-block">
-                                <img
-                                  src={image.url}
-                                  alt="原图"
-                                  className="cursor-pointer block"
-                                  style={{
-                                    transform: `scale(${originalZoom})`,
-                                    transformOrigin: 'top left',
-                                    maxWidth: 'none',
-                                    minWidth: '100%',
-                                    minHeight: '100%',
-                                    objectFit: 'contain'
-                                  }}
-                                  onClick={(e) => handleImageClick(e, image.id)}
-                                />
-                                {renderWatermarkMarks(image.watermarkMarks, image.id)}
+                              <div className="w-full h-full flex items-center justify-center p-2">
+                                <div className="relative">
+                                  <img
+                                    src={image.url}
+                                    alt="原图"
+                                    className="cursor-pointer block max-w-full max-h-full object-contain"
+                                    style={{
+                                      transform: `scale(${originalZoom})`,
+                                      transformOrigin: 'center center'
+                                    }}
+                                    onClick={(e) => handleImageClick(e, image.id)}
+                                  />
+                                  {renderWatermarkMarks(image.watermarkMarks, image.id)}
+                                </div>
                               </div>
                             </ScrollArea>
                           </div>
@@ -785,20 +783,18 @@ const WatermarkRemover = () => {
                           <div className="relative bg-gray-50 rounded-lg overflow-hidden aspect-video">
                             {image.processedUrl ? (
                               <ScrollArea className="w-full h-full">
-                                <div className="relative inline-block">
-                                  <img
-                                    src={image.processedUrl}
-                                    alt="处理后"
-                                    className="block"
-                                    style={{
-                                      transform: `scale(${processedZoom})`,
-                                      transformOrigin: 'top left',
-                                      maxWidth: 'none',
-                                      minWidth: '100%',
-                                      minHeight: '100%',
-                                      objectFit: 'contain'
-                                    }}
-                                  />
+                                <div className="w-full h-full flex items-center justify-center p-2">
+                                  <div className="relative">
+                                    <img
+                                      src={image.processedUrl}
+                                      alt="处理后"
+                                      className="block max-w-full max-h-full object-contain"
+                                      style={{
+                                        transform: `scale(${processedZoom})`,
+                                        transformOrigin: 'center center'
+                                      }}
+                                    />
+                                  </div>
                                 </div>
                               </ScrollArea>
                             ) : (
