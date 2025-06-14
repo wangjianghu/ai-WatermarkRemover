@@ -1,10 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { Upload, Download } from 'lucide-react';
+import { Upload, Download, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
-import { ProcessedImage } from './ProcessedImage';
 
 interface ImageItem {
   id: string;
@@ -20,9 +19,9 @@ type ZoomLevel = number;
 const WatermarkRemover = () => {
   const [images, setImages] = useState<ImageItem[]>([]);
   const [progress, setProgress] = useState<number>(0);
+  const [zoomLevel, setZoomLevel] = useState<ZoomLevel>(1);
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [showOriginal, setShowOriginal] = useState<Record<string, boolean>>({});
 
   const loadImageDimensions = (file: File): Promise<{ width: number; height: number }> => {
     return new Promise((resolve) => {
@@ -51,7 +50,7 @@ const WatermarkRemover = () => {
         })
       );
       setImages(prevImages => [...prevImages, ...newImages]);
-      if (newImages.length > 0 && !selectedImageId) {
+      if (newImages.length > 0) {
         setSelectedImageId(newImages[0].id);
       }
       event.target.value = '';
@@ -354,7 +353,6 @@ const WatermarkRemover = () => {
       return;
     }
 
-    setSelectedImageId(imageItem.id);
     setIsProcessing(true);
     setProgress(0);
 
@@ -381,8 +379,23 @@ const WatermarkRemover = () => {
     } finally {
       setIsProcessing(false);
       setProgress(0);
-      setSelectedImageId(null);
     }
+  };
+
+  const handleZoomIn = () => {
+    setZoomLevel(prevLevel => Math.min(prevLevel + 0.2, 3));
+  };
+
+  const handleZoomOut = () => {
+    setZoomLevel(prevLevel => Math.max(prevLevel - 0.2, 0.4));
+  };
+
+  const handleRotate = (imageId: string) => {
+    setImages(prevImages =>
+      prevImages.map(img =>
+        img.id === imageId ? { ...img, rotation: img.rotation + 90 } : img
+      )
+    );
   };
 
   const handleDownload = (imageItem: ImageItem) => {
@@ -401,26 +414,6 @@ const WatermarkRemover = () => {
 
   const handleImageClick = (imageId: string) => {
     setSelectedImageId(imageId);
-  };
-
-  const handleToggleView = (imageId: string) => {
-    setShowOriginal(prev => ({ ...prev, [imageId]: !prev[imageId] }));
-  };
-
-  const handleRemoveImage = (imageId: string) => {
-    setImages(prevImages => {
-      const newImages = prevImages.filter(img => img.id !== imageId);
-      if (selectedImageId === imageId) {
-        const newSelectedId = newImages.length > 0 ? newImages[0].id : null;
-        setSelectedImageId(newSelectedId);
-      }
-      return newImages;
-    });
-    setShowOriginal(prev => {
-      const newShowOriginal = { ...prev };
-      delete newShowOriginal[imageId];
-      return newShowOriginal;
-    });
   };
 
   const selectedImage = images.find(img => img.id === selectedImageId);
@@ -450,7 +443,7 @@ const WatermarkRemover = () => {
 
   return (
     <div className="h-full flex flex-col">
-      {progress > 0 && isProcessing && (
+      {progress > 0 && (
         <div className="flex-shrink-0 px-6 pt-6">
           <Card>
             <CardContent className="p-6">
@@ -523,37 +516,96 @@ const WatermarkRemover = () => {
         <Card className="lg:col-span-3 flex flex-col">
           <CardContent className="flex flex-col h-full p-4">
             <div className="flex items-center justify-between mb-4 flex-shrink-0">
-              <h2 className="text-lg font-semibold whitespace-nowrap">图片处理结果</h2>
+              <h2 className="text-lg font-semibold whitespace-nowrap">图片对比</h2>
+              {selectedImage && (
+                <div className="flex items-center justify-between w-full ml-8">
+                  <div className="flex-1 flex items-center justify-center space-x-2">
+                    <Button variant="outline" size="icon" onClick={handleZoomIn}>
+                      <ZoomIn className="h-4 w-4" />
+                    </Button>
+                    <Button variant="outline" size="icon" onClick={handleZoomOut}>
+                      <ZoomOut className="h-4 w-4" />
+                    </Button>
+                    <Button variant="outline" size="icon" onClick={() => handleRotate(selectedImageId!)}>
+                      <RotateCcw className="h-4 w-4" />
+                    </Button>
+                    <span className="text-sm text-gray-600">
+                      {Math.round(zoomLevel * 100)}%
+                    </span>
+                  </div>
+                  {selectedImage.processedUrl && (
+                    <Button 
+                      onClick={() => handleDownload(selectedImage)}
+                      className="flex items-center space-x-2 flex-shrink-0"
+                    >
+                      <Download className="h-4 w-4" />
+                      <span>下载处理后的图片</span>
+                    </Button>
+                  )}
+                </div>
+              )}
             </div>
             
-            {images.length > 0 ? (
-              <div className="flex-1 min-h-0 overflow-y-auto p-1">
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-6">
-                  {images.map(image => (
-                    <ProcessedImage
-                      key={image.id}
-                      image={{
-                        id: image.id,
-                        originalFile: image.file,
-                        originalUrl: image.url,
-                        processedUrl: image.processedUrl,
-                        isProcessing: isProcessing && selectedImageId === image.id,
-                        progress: isProcessing && selectedImageId === image.id ? progress : 0,
-                      }}
-                      showOriginal={!!showOriginal[image.id]}
-                      onProcess={() => handleRemoveWatermark(image)}
-                      onRemove={() => handleRemoveImage(image.id)}
-                      onDownload={() => handleDownload(image)}
-                      onToggleView={() => handleToggleView(image.id)}
-                    />
-                  ))}
+            {selectedImage ? (
+              <div className="flex-1 min-h-0">
+                <div className="grid grid-cols-2 gap-6 h-full">
+                  <div className="flex flex-col space-y-3 min-h-0">
+                    <h3 className="text-md font-semibold text-center flex-shrink-0">原始图片</h3>
+                    <div 
+                      className="border-2 border-gray-200 rounded-lg bg-gray-50 overflow-auto flex-1"
+                    >
+                      <div className="flex items-center justify-center min-h-full">
+                        <img
+                          src={selectedImage.url}
+                          alt={selectedImage.file.name}
+                          className="object-contain max-w-none"
+                          style={{
+                            transform: `rotate(${selectedImage.rotation}deg) scale(${zoomLevel})`,
+                            transformOrigin: 'center center'
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col space-y-3 min-h-0">
+                    <h3 className="text-md font-semibold text-center flex-shrink-0">处理结果</h3>
+                    <div 
+                      className="border-2 border-gray-200 rounded-lg bg-gray-50 overflow-auto flex-1"
+                    >
+                      {selectedImage.processedUrl ? (
+                        <div className="flex items-center justify-center min-h-full">
+                          <img
+                            src={selectedImage.processedUrl}
+                            alt={`处理后的 ${selectedImage.file.name}`}
+                            className="object-contain max-w-none"
+                            style={{
+                              transform: `rotate(${selectedImage.rotation}deg) scale(${zoomLevel})`,
+                              transformOrigin: 'center center'
+                            }}
+                          />
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center h-full text-gray-500 space-y-3 p-4">
+                          <p className="text-center text-sm">请先处理图片以查看结果</p>
+                          <Button 
+                            onClick={() => handleRemoveWatermark(selectedImage)}
+                            disabled={isProcessing}
+                            size="sm"
+                          >
+                            {isProcessing ? '处理中...' : '开始去水印'}
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             ) : (
               <div className="flex items-center justify-center flex-1 text-gray-500 border-2 border-dashed border-gray-200 rounded-lg">
                 <div className="text-center">
-                  <p className="text-lg mb-2">请上传图片</p>
-                  <p className="text-sm text-gray-400">上传后将在此处看到图片处理卡片</p>
+                  <p className="text-lg mb-2">请上传并选择一张图片</p>
+                  <p className="text-sm text-gray-400">从左侧列表选择图片进行查看和处理</p>
                 </div>
               </div>
             )}
