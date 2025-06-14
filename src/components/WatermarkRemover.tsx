@@ -999,7 +999,7 @@ const WatermarkRemover = () => {
     const top = Math.min(startY, currentY);
     const width = Math.abs(currentX - startX);
     const height = Math.abs(currentY - startY);
-    return <div className="absolute border-2 border-dashed border-blue-500 bg-blue-500 bg-opacity-8 pointer-events-none transition-all duration-75 rounded-sm" style={{
+    return <div className="absolute border-2 border-dashed border-blue-500 bg-transparent pointer-events-none transition-all duration-75 rounded-sm" style={{
       left: `${left * 100}%`,
       top: `${top * 100}%`,
       width: `${width * 100}%`,
