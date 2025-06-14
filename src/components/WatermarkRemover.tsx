@@ -6,7 +6,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Slider } from '@/components/ui/slider';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Upload, Download, Trash2, MapPin, RefreshCw, Settings, ZoomIn, ZoomOut, RotateCcw, Undo2, Sparkles, Info } from 'lucide-react';
+import { Upload, Download, Trash2, MapPin, RefreshCw, Settings, ZoomIn, ZoomOut, RotateCcw, Undo2, Sparkles, Info, Copy } from 'lucide-react';
 import { toast } from 'sonner';
 import BatchDownloadDialog from './BatchDownloadDialog';
 
@@ -1061,6 +1061,69 @@ const WatermarkRemover = () => {
     }} />;
   };
 
+  const applyWatermarkToAllImages = () => {
+    if (!selectedImage?.watermarkMark) {
+      toast.error("请先标记水印位置", { duration: 800 });
+      return;
+    }
+
+    const selectedImageData = images.find(img => img.id === selectedImageId);
+    if (!selectedImageData?.dimensions || !selectedImageData.watermarkMark) {
+      toast.error("无法获取当前图片信息", { duration: 800 });
+      return;
+    }
+
+    // 计算当前标记相对于右下角的绝对位置
+    const currentDimensions = selectedImageData.dimensions;
+    const currentMark = selectedImageData.watermarkMark;
+    
+    // 转换为像素坐标
+    const markPixelX = currentMark.x * currentDimensions.width;
+    const markPixelY = currentMark.y * currentDimensions.height;
+    const markPixelWidth = currentMark.width * currentDimensions.width;
+    const markPixelHeight = currentMark.height * currentDimensions.height;
+    
+    // 计算距离右下角的绝对位置
+    const offsetFromRight = currentDimensions.width - (markPixelX + markPixelWidth);
+    const offsetFromBottom = currentDimensions.height - (markPixelY + markPixelHeight);
+
+    let appliedCount = 0;
+    
+    setImages(prevImages => prevImages.map(img => {
+      if (img.id === selectedImageId || !img.dimensions) {
+        return img; // 跳过当前图片和没有尺寸信息的图片
+      }
+
+      // 根据目标图片尺寸计算新的标记位置
+      const targetWidth = img.dimensions.width;
+      const targetHeight = img.dimensions.height;
+      
+      // 计算新的像素位置
+      const newMarkPixelX = targetWidth - offsetFromRight - markPixelWidth;
+      const newMarkPixelY = targetHeight - offsetFromBottom - markPixelHeight;
+      
+      // 确保标记位置在图片范围内
+      const clampedX = Math.max(0, Math.min(newMarkPixelX, targetWidth - markPixelWidth));
+      const clampedY = Math.max(0, Math.min(newMarkPixelY, targetHeight - markPixelHeight));
+      
+      // 转换回相对坐标
+      const newMark = {
+        x: clampedX / targetWidth,
+        y: clampedY / targetHeight,
+        width: markPixelWidth / targetWidth,
+        height: markPixelHeight / targetWidth
+      };
+
+      appliedCount++;
+      return {
+        ...img,
+        watermarkMark: newMark
+      };
+    }));
+
+    toast.success(`已将水印标记应用到 ${appliedCount} 张图片`, { duration: 1000 });
+  };
+
   const selectedImage = images.find(img => img.id === selectedImageId);
   return <div className="h-full flex">
       {/* Left Sidebar */}
@@ -1180,10 +1243,14 @@ const WatermarkRemover = () => {
             setSelectedMark(false);
           }} className="text-xs">
                 <MapPin className="h-3 w-3 mr-1" />
-                {isMarkingMode ? '退出标记' : '标记水印'}
+                {isMarkingMode ? '完成标记' : '标记水印'}
               </Button>
               {selectedImage.watermarkMark && <Button variant="outline" size="sm" onClick={() => clearWatermarkMark(selectedImage.id)} className="text-xs">
                   清除标记
+                </Button>}
+              {selectedImage.watermarkMark && <Button variant="outline" size="sm" onClick={applyWatermarkToAllImages} className="text-xs">
+                  <Copy className="h-3 w-3 mr-1" />
+                  批量应用标记
                 </Button>}
               {selectedImage.processedUrl && <Button variant="outline" size="sm" onClick={() => restoreToOriginal(selectedImage.id)} className="text-xs">
                   <Undo2 className="h-3 w-3 mr-1" />
@@ -1204,89 +1271,7 @@ const WatermarkRemover = () => {
             </div>}
         </div>
         
-        {selectedImage ? <div className="flex-1 grid grid-cols-2 gap-4 p-4 min-h-0 overflow-hidden">
-            {/* Original Image */}
-            <div className="flex flex-col min-h-0">
-              <div className="flex items-center justify-between mb-2 flex-shrink-0">
-                <div className="flex items-center space-x-4">
-                  <span className="text-sm font-medium text-gray-600">原图</span>
-                  {isProcessing && <div className="flex items-center space-x-2">
-                      <Progress value={progress} className="w-20 h-2" />
-                      <span className="text-xs text-gray-500">{progress}%</span>
-                    </div>}
-                </div>
-                <div className="flex items-center space-x-1">
-                  <Button variant="ghost" size="sm" onClick={handleZoomOut} className="h-6 w-6 p-0">
-                    <ZoomOut className="h-3 w-3" />
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={resetZoom} className="h-6 px-2 text-xs">
-                    <RotateCcw className="h-3 w-3" />
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={handleZoomIn} className="h-6 w-6 p-0">
-                    <ZoomIn className="h-3 w-3" />
-                  </Button>
-                  <span className="text-xs text-gray-500 ml-2">{Math.round(zoom * 100)}%</span>
-                </div>
-              </div>
-              <div ref={originalScrollRef} className="flex-1 relative bg-white rounded-lg border overflow-auto min-h-0" onScroll={e => {
-            const target = e.target as HTMLDivElement;
-            syncScroll('original', target.scrollLeft, target.scrollTop);
-          }}>
-                <div className="p-4 flex items-center justify-center min-h-full">
-                  <div className="relative" style={{
-                    transform: `scale(${zoom})`,
-                    transformOrigin: 'center center'
-                  }}>
-                    <img src={selectedImage.url} alt="原图" className={`block object-contain transition-transform duration-200 ease-out ${isMarkingMode ? 'cursor-crosshair' : ''}`} onMouseDown={e => handleMouseDown(e, selectedImage.id)} onMouseMove={e => handleMouseMove(e, selectedImage.id)} onMouseUp={e => handleMouseUp(e, selectedImage.id)} draggable={false} />
-                    {renderWatermarkMark(selectedImage.watermarkMark, true)}
-                    {renderDragPreview()}
-                  </div>
-                </div>
-              </div>
-            </div>
-            
-            {/* Processed Image */}
-            <div className="flex flex-col min-h-0">
-              <div className="flex items-center justify-between mb-2 flex-shrink-0">
-                <span className="text-sm font-medium text-gray-600">处理后</span>
-                <div className="flex items-center space-x-1">
-                  <Button variant="ghost" size="sm" onClick={handleZoomOut} className="h-6 w-6 p-0" disabled={!selectedImage.processedUrl}>
-                    <ZoomOut className="h-3 w-3" />
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={resetZoom} className="h-6 px-2 text-xs" disabled={!selectedImage.processedUrl}>
-                    <RotateCcw className="h-3 w-3" />
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={handleZoomIn} className="h-6 w-6 p-0" disabled={!selectedImage.processedUrl}>
-                    <ZoomIn className="h-3 w-3" />
-                  </Button>
-                  <span className="text-xs text-gray-500 ml-2">{Math.round(zoom * 100)}%</span>
-                </div>
-              </div>
-              <div ref={processedScrollRef} className="flex-1 relative bg-white rounded-lg border overflow-auto min-h-0" onScroll={e => {
-            const target = e.target as HTMLDivElement;
-            syncScroll('processed', target.scrollLeft, target.scrollTop);
-          }}>
-                {selectedImage.processedUrl ? <div className="p-4 flex items-center justify-center min-h-full">
-                    <div className="relative" style={{
-                      transform: `scale(${zoom})`,
-                      transformOrigin: 'center center'
-                    }}>
-                      <img src={selectedImage.processedUrl} alt="处理后" className="block object-contain" draggable={false} />
-                    </div>
-                  </div> : <div className="absolute inset-0 flex items-center justify-center text-gray-400 text-sm">
-                    {isProcessing ? <div className="text-center">
-                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-2"></div>
-                        <div className="text-xs">正在处理...</div>
-                      </div> : '等待处理'}
-                  </div>}
-              </div>
-            </div>
-          </div> : <div className="flex-1 flex items-center justify-center text-gray-500">
-            <div className="text-center">
-              <p className="text-lg mb-2">请从左侧列表中选择一张图片进行处理</p>
-              <p className="text-sm text-gray-400">上传后将在此处看到图片对比</p>
-            </div>
-          </div>}
+        {/* ... keep existing code (main content area with image grids) */}
       </div>
       
       {/* Batch Download Dialog */}
