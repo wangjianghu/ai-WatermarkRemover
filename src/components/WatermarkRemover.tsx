@@ -27,7 +27,7 @@ const WatermarkRemover = () => {
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isMarkingMode, setIsMarkingMode] = useState(false);
-  const [processingAlgorithm, setProcessingAlgorithm] = useState<'basic' | 'advanced' | 'combined'>('combined');
+  const [processingAlgorithm, setProcessingAlgorithm] = useState<'enhanced' | 'conservative' | 'aggressive'>('enhanced');
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const loadImageDimensions = (file: File): Promise<{ width: number; height: number }> => {
@@ -95,49 +95,103 @@ const WatermarkRemover = () => {
     );
   };
 
-  // 基础水印检测算法
-  const isWatermarkPixel = (data: Uint8ClampedArray, index: number, x: number, y: number, width: number, height: number): boolean => {
+  // 增强水印检测算法
+  const detectWatermark = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number): number => {
+    const index = (y * width + x) * 4;
     const r = data[index];
     const g = data[index + 1];
     const b = data[index + 2];
     const a = data[index + 3];
     
-    const isInWatermarkRegion = isInPotentialWatermarkRegion(x, y, width, height);
-    if (!isInWatermarkRegion) return false;
+    let confidence = 0;
     
+    // 1. 透明度检测 - 水印通常半透明
+    if (a < 245) {
+      confidence += 0.3;
+      if (a < 200) confidence += 0.2;
+    }
+    
+    // 2. 亮度检测 - 水印通常是白色或很暗的文字
     const brightness = (r + g + b) / 3;
-    const isTransparent = a < 180;
-    const isExtremeBright = brightness > 240 || brightness < 20;
-    const contrast = calculateLocalContrast(data, x, y, width, height);
-    const hasHighContrast = contrast > 80;
+    if (brightness > 220 || brightness < 50) {
+      confidence += 0.25;
+    }
     
-    let suspicionScore = 0;
-    if (isTransparent) suspicionScore += 0.5;
-    if (isExtremeBright) suspicionScore += 0.4;
-    if (hasHighContrast) suspicionScore += 0.3;
+    // 3. 颜色一致性检测 - 水印颜色通常比较单一
+    const colorVariance = Math.max(Math.abs(r - g), Math.abs(g - b), Math.abs(r - b));
+    if (colorVariance < 20) {
+      confidence += 0.2;
+    }
     
-    return suspicionScore > 0.8;
+    // 4. 局部对比度检测
+    const contrast = this.calculateLocalContrast(data, x, y, width, height);
+    if (contrast > 60) {
+      confidence += 0.3;
+    }
+    
+    // 5. 边缘特征检测
+    const edgeStrength = this.calculateEdgeStrength(data, x, y, width, height);
+    if (edgeStrength > 40) {
+      confidence += 0.25;
+    }
+    
+    // 6. 文字模式检测
+    if (this.detectTextPattern(data, x, y, width, height)) {
+      confidence += 0.35;
+    }
+    
+    // 7. 位置权重 - 水印通常在特定位置
+    const positionWeight = this.getPositionWeight(x, y, width, height);
+    confidence *= positionWeight;
+    
+    return Math.min(confidence, 1.0);
   };
 
-  // 高级水印检测算法
-  const isWatermarkPixelAdvanced = (data: Uint8ClampedArray, index: number, x: number, y: number, width: number, height: number): boolean => {
-    const r = data[index];
-    const g = data[index + 1];
-    const b = data[index + 2];
-    const a = data[index + 3];
+  // 计算位置权重
+  const getPositionWeight = (x: number, y: number, width: number, height: number): number => {
+    const normalizedX = x / width;
+    const normalizedY = y / height;
     
-    const brightness = (r + g + b) / 3;
-    const isTextLike = detectTextFeatures(data, x, y, width, height);
-    const isIsolatedPixel = checkIsolatedPixel(data, x, y, width, height);
-    const edgeStrength = calculateEdgeStrength(data, x, y, width, height);
+    // 右下角权重最高
+    if (normalizedX > 0.7 && normalizedY > 0.7) return 1.2;
+    // 四个角落
+    if ((normalizedX < 0.3 || normalizedX > 0.7) && (normalizedY < 0.3 || normalizedY > 0.7)) return 1.1;
+    // 边缘区域
+    if (normalizedX < 0.2 || normalizedX > 0.8 || normalizedY < 0.2 || normalizedY > 0.8) return 1.0;
+    // 中心区域权重较低
+    return 0.8;
+  };
+
+  // 文字模式检测
+  const detectTextPattern = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number): boolean => {
+    const patterns = [];
+    const radius = 2;
     
-    let score = 0;
-    if (a < 200) score += 0.4;
-    if (isTextLike) score += 0.5;
-    if (isIsolatedPixel) score += 0.3;
-    if (edgeStrength > 30) score += 0.3;
+    // 检测水平和垂直线条
+    for (let dx = -radius; dx <= radius; dx++) {
+      for (let dy = -radius; dy <= radius; dy++) {
+        const nx = x + dx;
+        const ny = y + dy;
+        
+        if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+          const nIndex = (ny * width + nx) * 4;
+          const brightness = (data[nIndex] + data[nIndex + 1] + data[nIndex + 2]) / 3;
+          patterns.push(brightness);
+        }
+      }
+    }
     
-    return score > 0.7;
+    // 检测是否有文字特征（规律的明暗变化）
+    let edgeCount = 0;
+    const centerBrightness = patterns[Math.floor(patterns.length / 2)];
+    
+    patterns.forEach(brightness => {
+      if (Math.abs(brightness - centerBrightness) > 50) {
+        edgeCount++;
+      }
+    });
+    
+    return edgeCount >= 3 && edgeCount <= patterns.length * 0.7;
   };
 
   // 手动标记区域检测
@@ -150,52 +204,13 @@ const WatermarkRemover = () => {
     });
   };
 
-  const isInPotentialWatermarkRegion = (x: number, y: number, width: number, height: number): boolean => {
-    const edgeThreshold = 0.15;
-    
-    if (x > width * (1 - edgeThreshold) && y > height * (1 - edgeThreshold)) return true;
-    if (x > width * (1 - edgeThreshold) && y < height * edgeThreshold) return true;
-    if (x < width * edgeThreshold && y > height * (1 - edgeThreshold)) return true;
-    if (x < width * edgeThreshold && y < height * edgeThreshold) return true;
-    
-    return false;
-  };
-
-  const checkIsolatedPixel = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number): boolean => {
-    const centerIndex = (y * width + x) * 4;
-    const centerBrightness = (data[centerIndex] + data[centerIndex + 1] + data[centerIndex + 2]) / 3;
-    
-    let differentNeighbors = 0;
-    let totalNeighbors = 0;
-    
-    for (let dy = -1; dy <= 1; dy++) {
-      for (let dx = -1; dx <= 1; dx++) {
-        if (dx === 0 && dy === 0) continue;
-        
-        const nx = x + dx;
-        const ny = y + dy;
-        
-        if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
-          const neighborIndex = (ny * width + nx) * 4;
-          const neighborBrightness = (data[neighborIndex] + data[neighborIndex + 1] + data[neighborIndex + 2]) / 3;
-          
-          if (Math.abs(centerBrightness - neighborBrightness) > 50) {
-            differentNeighbors++;
-          }
-          totalNeighbors++;
-        }
-      }
-    }
-    
-    return totalNeighbors > 0 && (differentNeighbors / totalNeighbors) > 0.6;
-  };
-
+  // 计算局部对比度
   const calculateLocalContrast = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number): number => {
     const centerIndex = (y * width + x) * 4;
     const centerBrightness = (data[centerIndex] + data[centerIndex + 1] + data[centerIndex + 2]) / 3;
     
     let maxDiff = 0;
-    const radius = 2;
+    const radius = 3;
     
     for (let dy = -radius; dy <= radius; dy++) {
       for (let dx = -radius; dx <= radius; dx++) {
@@ -213,29 +228,7 @@ const WatermarkRemover = () => {
     return maxDiff;
   };
 
-  const detectTextFeatures = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number): boolean => {
-    let edgeCount = 0;
-    let totalPixels = 0;
-    const radius = 1;
-    
-    for (let dy = -radius; dy <= radius; dy++) {
-      for (let dx = -radius; dx <= radius; dx++) {
-        const nx = x + dx;
-        const ny = y + dy;
-        
-        if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
-          const edgeStrength = calculateEdgeStrength(data, nx, ny, width, height);
-          if (edgeStrength > 50) {
-            edgeCount++;
-          }
-          totalPixels++;
-        }
-      }
-    }
-    
-    return totalPixels > 0 && (edgeCount / totalPixels) > 0.5;
-  };
-
+  // 计算边缘强度
   const calculateEdgeStrength = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number): number => {
     const sobelX = [-1, 0, 1, -2, 0, 2, -1, 0, 1];
     const sobelY = [-1, -2, -1, 0, 0, 0, 1, 2, 1];
@@ -260,12 +253,14 @@ const WatermarkRemover = () => {
     return Math.sqrt(gx * gx + gy * gy);
   };
 
-  const repairPixel = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number, radius: number) => {
-    const validPixels: Array<{r: number, g: number, b: number, a: number, weight: number}> = [];
-    const repairRadius = Math.min(radius, 3);
+  // 增强像素修复算法
+  const repairPixel = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number, confidence: number) => {
+    const radius = Math.min(Math.max(3, Math.floor(confidence * 6)), 8);
+    const validPixels: Array<{r: number, g: number, b: number, a: number, weight: number, distance: number}> = [];
     
-    for (let dy = -repairRadius; dy <= repairRadius; dy++) {
-      for (let dx = -repairRadius; dx <= repairRadius; dx++) {
+    // 收集有效的邻近像素
+    for (let dy = -radius; dy <= radius; dy++) {
+      for (let dx = -radius; dx <= radius; dx++) {
         if (dx === 0 && dy === 0) continue;
         
         const nx = x + dx;
@@ -273,28 +268,54 @@ const WatermarkRemover = () => {
         
         if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
           const neighborIndex = (ny * width + nx) * 4;
-          const distance = Math.sqrt(dx * dx + dy * dy);
-          const weight = 1 / (distance * distance + 0.1);
+          const neighborConfidence = this.detectWatermark(data, nx, ny, width, height);
           
-          validPixels.push({
-            r: data[neighborIndex],
-            g: data[neighborIndex + 1],
-            b: data[neighborIndex + 2],
-            a: data[neighborIndex + 3],
-            weight: weight
-          });
+          // 只使用非水印像素
+          if (neighborConfidence < 0.3) {
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            const weight = 1 / (distance * distance + 0.1);
+            
+            validPixels.push({
+              r: data[neighborIndex],
+              g: data[neighborIndex + 1],
+              b: data[neighborIndex + 2],
+              a: data[neighborIndex + 3],
+              weight: weight,
+              distance: distance
+            });
+          }
         }
       }
     }
     
     if (validPixels.length === 0) return null;
     
-    validPixels.sort((a, b) => b.weight - a.weight);
-    const usePixels = validPixels.slice(0, Math.min(validPixels.length, 4));
+    // 根据算法类型选择修复策略
+    let repairedPixel;
     
+    if (processingAlgorithm === 'conservative') {
+      // 保守修复：使用最近的几个像素
+      validPixels.sort((a, b) => a.distance - b.distance);
+      const useCount = Math.min(4, validPixels.length);
+      repairedPixel = this.weightedAverage(validPixels.slice(0, useCount));
+    } else if (processingAlgorithm === 'aggressive') {
+      // 激进修复：使用所有有效像素
+      repairedPixel = this.weightedAverage(validPixels);
+    } else {
+      // 增强修复：智能选择像素
+      validPixels.sort((a, b) => b.weight - a.weight);
+      const useCount = Math.min(Math.max(6, Math.floor(validPixels.length * 0.6)), validPixels.length);
+      repairedPixel = this.weightedAverage(validPixels.slice(0, useCount));
+    }
+    
+    return repairedPixel;
+  };
+
+  // 加权平均计算
+  const weightedAverage = (pixels: Array<{r: number, g: number, b: number, a: number, weight: number}>) => {
     let totalR = 0, totalG = 0, totalB = 0, totalA = 0, totalWeight = 0;
     
-    usePixels.forEach(pixel => {
+    pixels.forEach(pixel => {
       totalR += pixel.r * pixel.weight;
       totalG += pixel.g * pixel.weight;
       totalB += pixel.b * pixel.weight;
@@ -330,50 +351,59 @@ const WatermarkRemover = () => {
         const data = imageData.data;
         
         let processedPixels = 0;
+        const watermarkPixels: Array<{x: number, y: number, confidence: number}> = [];
         
-        // 多算法组合处理
-        for (let i = 0; i < data.length; i += 4) {
-          const x = (i / 4) % canvas.width;
-          const y = Math.floor((i / 4) / canvas.width);
-          const normalizedX = x / canvas.width;
-          const normalizedY = y / canvas.height;
-          
-          let shouldProcess = false;
-          
-          // 检查是否在手动标记区域
-          if (marks && marks.length > 0) {
-            shouldProcess = isInMarkedWatermarkArea(normalizedX, normalizedY, marks);
-          }
-          
-          // 如果不在手动标记区域，使用算法检测
-          if (!shouldProcess) {
-            switch (processingAlgorithm) {
-              case 'basic':
-                shouldProcess = isWatermarkPixel(data, i, x, y, canvas.width, canvas.height);
-                break;
-              case 'advanced':
-                shouldProcess = isWatermarkPixelAdvanced(data, i, x, y, canvas.width, canvas.height);
-                break;
-              case 'combined':
-                shouldProcess = isWatermarkPixel(data, i, x, y, canvas.width, canvas.height) ||
-                              isWatermarkPixelAdvanced(data, i, x, y, canvas.width, canvas.height);
-                break;
+        // 第一遍：检测所有水印像素
+        for (let y = 0; y < canvas.height; y++) {
+          for (let x = 0; x < canvas.width; x++) {
+            const normalizedX = x / canvas.width;
+            const normalizedY = y / canvas.height;
+            
+            let confidence = 0;
+            
+            // 检查手动标记
+            if (marks && marks.length > 0) {
+              if (isInMarkedWatermarkArea(normalizedX, normalizedY, marks)) {
+                confidence = 0.9;
+              }
             }
-          }
-          
-          if (shouldProcess) {
-            const repaired = repairPixel(data, x, y, canvas.width, canvas.height, 3);
-            if (repaired) {
-              data[i] = repaired.r;
-              data[i + 1] = repaired.g;
-              data[i + 2] = repaired.b;
-              data[i + 3] = repaired.a;
-              processedPixels++;
+            
+            // 如果没有手动标记，使用算法检测
+            if (confidence === 0) {
+              confidence = this.detectWatermark(data, x, y, canvas.width, canvas.height);
+            }
+            
+            // 根据算法类型调整阈值
+            let threshold = 0.4;
+            if (processingAlgorithm === 'conservative') threshold = 0.6;
+            else if (processingAlgorithm === 'aggressive') threshold = 0.3;
+            
+            if (confidence > threshold) {
+              watermarkPixels.push({x, y, confidence});
             }
           }
         }
+        
+        console.log(`检测到 ${watermarkPixels.length} 个水印像素`);
+        
+        // 按置信度排序
+        watermarkPixels.sort((a, b) => b.confidence - a.confidence);
+        
+        // 第二遍：修复水印像素
+        watermarkPixels.forEach(({x, y, confidence}) => {
+          const index = (y * canvas.width + x) * 4;
+          const repaired = this.repairPixel(data, x, y, canvas.width, canvas.height, confidence);
+          
+          if (repaired) {
+            data[index] = repaired.r;
+            data[index + 1] = repaired.g;
+            data[index + 2] = repaired.b;
+            data[index + 3] = repaired.a;
+            processedPixels++;
+          }
+        });
 
-        console.log(`处理了 ${processedPixels} 个水印像素`);
+        console.log(`修复了 ${processedPixels} 个水印像素`);
         
         ctx.putImageData(imageData, 0, 0);
         
@@ -393,12 +423,12 @@ const WatermarkRemover = () => {
 
   const handleRemoveWatermark = async (imageItem: ImageItem) => {
     if (isProcessing) {
-      toast.error("请等待当前任务完成", { duration: 2000 });
+      toast.error("请等待当前任务完成", { duration: 1500 });
       return;
     }
 
     if (!imageItem?.file) {
-      toast.error("请先上传图片", { duration: 2000 });
+      toast.error("请先上传图片", { duration: 1500 });
       return;
     }
 
@@ -408,8 +438,8 @@ const WatermarkRemover = () => {
 
     try {
       const progressInterval = setInterval(() => {
-        setProgress(prev => Math.min(prev + 15, 90));
-      }, 150);
+        setProgress(prev => Math.min(prev + 12, 85));
+      }, 200);
 
       const processedBlob = await processImageCanvas(imageItem.file, imageItem.watermarkMarks);
       
@@ -423,10 +453,10 @@ const WatermarkRemover = () => {
         )
       );
       
-      toast.success("水印去除完成!", { duration: 2000 });
+      toast.success("水印去除完成!", { duration: 1500 });
     } catch (error: any) {
       console.error("Error removing watermark:", error);
-      toast.error(`水印去除失败: ${error.message}`, { duration: 3000 });
+      toast.error(`水印去除失败: ${error.message}`, { duration: 2000 });
     } finally {
       setIsProcessing(false);
       setProgress(0);
@@ -442,9 +472,9 @@ const WatermarkRemover = () => {
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      toast.success("图片已开始下载!", { duration: 2000 });
+      toast.success("图片已开始下载!", { duration: 1500 });
     } else {
-      toast.error("请先去除水印", { duration: 2000 });
+      toast.error("请先去除水印", { duration: 1500 });
     }
   };
 
@@ -522,13 +552,13 @@ const WatermarkRemover = () => {
                 <span className="text-sm font-medium">处理算法:</span>
                 <select
                   value={processingAlgorithm}
-                  onChange={(e) => setProcessingAlgorithm(e.target.value as 'basic' | 'advanced' | 'combined')}
+                  onChange={(e) => setProcessingAlgorithm(e.target.value as 'enhanced' | 'conservative' | 'aggressive')}
                   className="text-xs border rounded px-2 py-1"
                   disabled={isProcessing}
                 >
-                  <option value="basic">基础检测</option>
-                  <option value="advanced">高级检测</option>
-                  <option value="combined">组合算法</option>
+                  <option value="enhanced">增强检测</option>
+                  <option value="conservative">保守处理</option>
+                  <option value="aggressive">激进处理</option>
                 </select>
               </div>
               
