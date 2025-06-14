@@ -117,15 +117,23 @@ const WatermarkRemover = () => {
     setScrollPosition({ x: scrollLeft, y: scrollTop });
   }, []);
 
+  const getImageCoordinates = (event: React.MouseEvent<HTMLImageElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+    const y = Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height));
+    return { x, y };
+  };
+
   const handleMouseDown = useCallback((event: React.MouseEvent<HTMLImageElement>, imageId: string) => {
     if (!isMarkingMode) return;
+
+    event.preventDefault();
+    event.stopPropagation();
 
     const selectedImage = images.find(img => img.id === imageId);
     if (!selectedImage) return;
 
-    const rect = event.currentTarget.getBoundingClientRect();
-    const x = (event.clientX - rect.left) / rect.width;
-    const y = (event.clientY - rect.top) / rect.height;
+    const { x, y } = getImageCoordinates(event);
 
     // Check if clicking on existing mark for selection/resize
     if (selectedImage.watermarkMark) {
@@ -140,7 +148,6 @@ const WatermarkRemover = () => {
           startY: y
         });
         setSelectedMark(true);
-        event.preventDefault();
         return;
       }
       
@@ -154,7 +161,6 @@ const WatermarkRemover = () => {
           currentX: x,
           currentY: y
         });
-        event.preventDefault();
         return;
       }
     }
@@ -174,8 +180,6 @@ const WatermarkRemover = () => {
       currentX: x,
       currentY: y
     });
-
-    event.preventDefault();
   }, [isMarkingMode, images]);
 
   const getResizeHandle = (x: number, y: number, mark: WatermarkMark): 'nw' | 'ne' | 'sw' | 'se' | 'n' | 'e' | 's' | 'w' | null => {
@@ -201,10 +205,12 @@ const WatermarkRemover = () => {
 
   const handleMouseMove = useCallback((event: React.MouseEvent<HTMLImageElement>, imageId: string) => {
     if (!isMarkingMode) return;
+    if (!dragState.isDragging && !resizeState.isResizing) return;
 
-    const rect = event.currentTarget.getBoundingClientRect();
-    const x = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
-    const y = Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height));
+    event.preventDefault();
+    event.stopPropagation();
+
+    const { x, y } = getImageCoordinates(event);
 
     if (resizeState.isResizing && resizeState.resizeHandle) {
       const selectedImage = images.find(img => img.id === imageId);
@@ -227,7 +233,24 @@ const WatermarkRemover = () => {
               newMark.height = newHeight;
             }
             break;
-          // Add other resize handles as needed
+          case 'ne':
+            const neWidth = Math.max(0.02, x - mark.x);
+            const neHeight = mark.height + (mark.y - y);
+            if (neHeight > 0.02) {
+              newMark.y = y;
+              newMark.width = neWidth;
+              newMark.height = neHeight;
+            }
+            break;
+          case 'sw':
+            const swWidth = mark.width + (mark.x - x);
+            const swHeight = Math.max(0.02, y - mark.y);
+            if (swWidth > 0.02) {
+              newMark.x = x;
+              newMark.width = swWidth;
+              newMark.height = swHeight;
+            }
+            break;
         }
 
         setImages(prevImages =>
@@ -266,6 +289,9 @@ const WatermarkRemover = () => {
 
   const handleMouseUp = useCallback((event: React.MouseEvent<HTMLImageElement>, imageId: string) => {
     if (!isMarkingMode) return;
+
+    event.preventDefault();
+    event.stopPropagation();
 
     if (resizeState.isResizing) {
       setResizeState({
@@ -332,6 +358,7 @@ const WatermarkRemover = () => {
     toast.success("已还原到原图状态", { duration: 800 });
   };
 
+  // Optimized watermark detection - reduced complexity
   const detectWatermark = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number): number => {
     const index = (y * width + x) * 4;
     const r = data[index];
@@ -341,37 +368,22 @@ const WatermarkRemover = () => {
     
     let confidence = 0;
     
+    // Alpha transparency check
     if (a < 245) {
-      confidence += 0.3;
-      if (a < 200) confidence += 0.2;
+      confidence += 0.4;
     }
     
+    // Brightness extremes
     const brightness = (r + g + b) / 3;
     if (brightness > 220 || brightness < 50) {
-      confidence += 0.25;
-    }
-    
-    const colorVariance = Math.max(Math.abs(r - g), Math.abs(g - b), Math.abs(r - b));
-    if (colorVariance < 20) {
-      confidence += 0.2;
-    }
-    
-    const contrast = calculateLocalContrast(data, x, y, width, height);
-    if (contrast > 60) {
       confidence += 0.3;
     }
     
-    const edgeStrength = calculateEdgeStrength(data, x, y, width, height);
-    if (edgeStrength > 40) {
-      confidence += 0.25;
+    // Low color variance (typical of watermarks)
+    const colorVariance = Math.max(Math.abs(r - g), Math.abs(g - b), Math.abs(r - b));
+    if (colorVariance < 20) {
+      confidence += 0.3;
     }
-    
-    if (detectTextPattern(data, x, y, width, height)) {
-      confidence += 0.35;
-    }
-    
-    const positionWeight = getPositionWeight(x, y, width, height);
-    confidence *= positionWeight;
     
     return Math.min(confidence, 1.0);
   };
@@ -380,41 +392,10 @@ const WatermarkRemover = () => {
     const normalizedX = x / width;
     const normalizedY = y / height;
     
+    // Common watermark positions get higher weights
     if (normalizedX > 0.7 && normalizedY > 0.7) return 1.2;
     if ((normalizedX < 0.3 || normalizedX > 0.7) && (normalizedY < 0.3 || normalizedY > 0.7)) return 1.1;
-    if (normalizedX < 0.2 || normalizedX > 0.8 || normalizedY < 0.2 || normalizedY > 0.8) return 1.0;
     return 0.8;
-  };
-
-  const detectTextPattern = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number): boolean => {
-    const patterns = [];
-    const radius = 2;
-    
-    for (let dx = -radius; dx <= radius; dx++) {
-      for (let dy = -radius; dy <= radius; dy++) {
-        const nx = x + dx;
-        const ny = y + dy;
-        
-        if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
-          const nIndex = (ny * width + nx) * 4;
-          const brightness = (data[nIndex] + data[nIndex + 1] + data[nIndex + 2]) / 3;
-          patterns.push(brightness);
-        }
-      }
-    }
-    
-    let edgeCount = 0;
-    const centerBrightness = patterns[Math.floor(patterns.length / 2)];
-    
-    if (centerBrightness !== undefined) {
-      patterns.forEach(brightness => {
-        if (brightness !== undefined && Math.abs(brightness - centerBrightness) > 50) {
-          edgeCount++;
-        }
-      });
-    }
-    
-    return edgeCount >= 3 && edgeCount <= patterns.length * 0.7;
   };
 
   const isInMarkedWatermarkArea = (x: number, y: number, mark?: WatermarkMark): boolean => {
@@ -422,58 +403,10 @@ const WatermarkRemover = () => {
     return x >= mark.x && x <= mark.x + mark.width && y >= mark.y && y <= mark.y + mark.height;
   };
 
-  const calculateLocalContrast = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number): number => {
-    const centerIndex = (y * width + x) * 4;
-    const centerBrightness = (data[centerIndex] + data[centerIndex + 1] + data[centerIndex + 2]) / 3;
-    
-    let maxDiff = 0;
-    const radius = 3;
-    
-    for (let dy = -radius; dy <= radius; dy++) {
-      for (let dx = -radius; dx <= radius; dx++) {
-        if (dx === 0 && dy === 0) continue;
-        
-        const nx = x + dx;
-        const ny = y + dy;
-        
-        if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
-          const neighborIndex = (ny * width + nx) * 4;
-          const neighborBrightness = (data[neighborIndex] + data[neighborIndex + 1] + data[neighborIndex + 2]) / 3;
-          maxDiff = Math.max(maxDiff, Math.abs(centerBrightness - neighborBrightness));
-        }
-      }
-    }
-    
-    return maxDiff;
-  };
-
-  const calculateEdgeStrength = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number): number => {
-    const sobelX = [-1, 0, 1, -2, 0, 2, -1, 0, 1];
-    const sobelY = [-1, -2, -1, 0, 0, 0, 1, 2, 1];
-    
-    let gx = 0, gy = 0;
-    
-    for (let i = 0; i < 9; i++) {
-      const dx = (i % 3) - 1;
-      const dy = Math.floor(i / 3) - 1;
-      const nx = x + dx;
-      const ny = y + dy;
-      
-      if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
-        const idx = (ny * width + nx) * 4;
-        const brightness = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
-        
-        gx += brightness * sobelX[i];
-        gy += brightness * sobelY[i];
-      }
-    }
-    
-    return Math.sqrt(gx * gx + gy * gy);
-  };
-
+  // Simplified pixel repair
   const repairPixel = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number, confidence: number) => {
-    const radius = Math.min(Math.max(4, Math.floor(confidence * 8)), 12);
-    const validPixels: Array<{r: number, g: number, b: number, a: number, weight: number, distance: number}> = [];
+    const radius = Math.min(6, Math.max(3, Math.floor(confidence * 5)));
+    const validPixels: Array<{r: number, g: number, b: number, a: number, weight: number}> = [];
     
     for (let dy = -radius; dy <= radius; dy++) {
       for (let dx = -radius; dx <= radius; dx++) {
@@ -488,15 +421,14 @@ const WatermarkRemover = () => {
           
           if (neighborConfidence < 0.3) {
             const distance = Math.sqrt(dx * dx + dy * dy);
-            const weight = 1 / (distance * distance + 0.1);
+            const weight = 1 / (distance + 0.1);
             
             validPixels.push({
               r: data[neighborIndex],
               g: data[neighborIndex + 1],
               b: data[neighborIndex + 2],
               a: data[neighborIndex + 3],
-              weight: weight,
-              distance: distance
+              weight: weight
             });
           }
         }
@@ -505,21 +437,11 @@ const WatermarkRemover = () => {
     
     if (validPixels.length === 0) return null;
     
-    let repairedPixel;
+    // Use top weighted pixels for better performance
+    validPixels.sort((a, b) => b.weight - a.weight);
+    const useCount = Math.min(8, validPixels.length);
     
-    if (processingAlgorithm === 'conservative') {
-      validPixels.sort((a, b) => a.distance - b.distance);
-      const useCount = Math.min(4, validPixels.length);
-      repairedPixel = weightedAverage(validPixels.slice(0, useCount));
-    } else if (processingAlgorithm === 'aggressive') {
-      repairedPixel = weightedAverage(validPixels);
-    } else {
-      validPixels.sort((a, b) => b.weight - a.weight);
-      const useCount = Math.min(Math.max(6, Math.floor(validPixels.length * 0.6)), validPixels.length);
-      repairedPixel = weightedAverage(validPixels.slice(0, useCount));
-    }
-    
-    return repairedPixel;
+    return weightedAverage(validPixels.slice(0, useCount));
   };
 
   const weightedAverage = (pixels: Array<{r: number, g: number, b: number, a: number, weight: number}>) => {
@@ -541,6 +463,7 @@ const WatermarkRemover = () => {
     };
   };
 
+  // Optimized processing function
   const processImageCanvas = async (imageFile: File, mark?: WatermarkMark, existingProcessedUrl?: string): Promise<Blob> => {
     return new Promise((resolve, reject) => {
       const img = new Image();
@@ -563,8 +486,11 @@ const WatermarkRemover = () => {
         let processedPixels = 0;
         const watermarkPixels: Array<{x: number, y: number, confidence: number}> = [];
         
-        for (let y = 0; y < canvas.height; y++) {
-          for (let x = 0; x < canvas.width; x++) {
+        // Optimized scanning - skip pixels for performance if no mark is specified
+        const step = mark ? 1 : 2; // Skip every other pixel if no manual mark
+        
+        for (let y = 0; y < canvas.height; y += step) {
+          for (let x = 0; x < canvas.width; x += step) {
             const normalizedX = x / canvas.width;
             const normalizedY = y / canvas.height;
             
@@ -572,10 +498,11 @@ const WatermarkRemover = () => {
             
             if (mark) {
               if (isInMarkedWatermarkArea(normalizedX, normalizedY, mark)) {
-                confidence = 0.9;
+                confidence = 0.9; // High confidence for marked areas
               }
             } else {
               confidence = detectWatermark(data, x, y, canvas.width, canvas.height);
+              confidence *= getPositionWeight(x, y, canvas.width, canvas.height);
             }
             
             let threshold = 0.4;
@@ -590,26 +517,40 @@ const WatermarkRemover = () => {
         
         console.log(`检测到 ${watermarkPixels.length} 个水印像素`);
         
+        // Sort by confidence for better results
         watermarkPixels.sort((a, b) => b.confidence - a.confidence);
         
-        // Enhanced edge blending for marked areas
-        if (mark) {
-          const expandedPixels = expandWatermarkRegion(watermarkPixels, canvas.width, canvas.height, mark);
-          watermarkPixels.push(...expandedPixels);
-        }
-        
+        // Process pixels with gradual blending for marked areas
         watermarkPixels.forEach(({x, y, confidence}) => {
           const index = (y * canvas.width + x) * 4;
           const repaired = repairPixel(data, x, y, canvas.width, canvas.height, confidence);
           
           if (repaired) {
-            // Apply gradual blending for edge pixels in marked areas
-            if (mark && isEdgePixel(x, y, canvas.width, canvas.height, mark)) {
-              const blendFactor = calculateBlendFactor(x, y, canvas.width, canvas.height, mark);
-              data[index] = Math.round(data[index] * (1 - blendFactor) + repaired.r * blendFactor);
-              data[index + 1] = Math.round(data[index + 1] * (1 - blendFactor) + repaired.g * blendFactor);
-              data[index + 2] = Math.round(data[index + 2] * (1 - blendFactor) + repaired.b * blendFactor);
-              data[index + 3] = Math.round(data[index + 3] * (1 - blendFactor) + repaired.a * blendFactor);
+            // Enhanced blending for marked areas
+            if (mark) {
+              const normalizedX = x / canvas.width;
+              const normalizedY = y / canvas.height;
+              const distanceToEdge = Math.min(
+                Math.abs(normalizedX - mark.x),
+                Math.abs(normalizedX - (mark.x + mark.width)),
+                Math.abs(normalizedY - mark.y),
+                Math.abs(normalizedY - (mark.y + mark.height))
+              );
+              
+              const maxBlendDistance = 0.02;
+              const blendFactor = Math.min(1, distanceToEdge / maxBlendDistance);
+              
+              if (blendFactor < 1) {
+                data[index] = Math.round(data[index] * blendFactor + repaired.r * (1 - blendFactor));
+                data[index + 1] = Math.round(data[index + 1] * blendFactor + repaired.g * (1 - blendFactor));
+                data[index + 2] = Math.round(data[index + 2] * blendFactor + repaired.b * (1 - blendFactor));
+                data[index + 3] = Math.round(data[index + 3] * blendFactor + repaired.a * (1 - blendFactor));
+              } else {
+                data[index] = repaired.r;
+                data[index + 1] = repaired.g;
+                data[index + 2] = repaired.b;
+                data[index + 3] = repaired.a;
+              }
             } else {
               data[index] = repaired.r;
               data[index + 1] = repaired.g;
@@ -638,62 +579,6 @@ const WatermarkRemover = () => {
     });
   };
 
-  // Helper methods for edge blending
-  const expandWatermarkRegion = (watermarkPixels: Array<{x: number, y: number, confidence: number}>, width: number, height: number, mark: WatermarkMark) => {
-    const expandedPixels: Array<{x: number, y: number, confidence: number}> = [];
-    const expandRadius = 3;
-    
-    watermarkPixels.forEach(pixel => {
-      for (let dy = -expandRadius; dy <= expandRadius; dy++) {
-        for (let dx = -expandRadius; dx <= expandRadius; dx++) {
-          const nx = pixel.x + dx;
-          const ny = pixel.y + dy;
-          
-          if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
-            const distance = Math.sqrt(dx * dx + dy * dy);
-            if (distance <= expandRadius) {
-              expandedPixels.push({
-                x: nx,
-                y: ny,
-                confidence: Math.max(0.2, pixel.confidence * (1 - distance / expandRadius))
-              });
-            }
-          }
-        }
-      }
-    });
-    
-    return expandedPixels;
-  };
-
-  const isEdgePixel = (x: number, y: number, width: number, height: number, mark: WatermarkMark): boolean => {
-    const normalizedX = x / width;
-    const normalizedY = y / height;
-    const edgeThickness = 0.01; // 1% of image size
-    
-    return (
-      (normalizedX >= mark.x - edgeThickness && normalizedX <= mark.x + edgeThickness) ||
-      (normalizedX >= mark.x + mark.width - edgeThickness && normalizedX <= mark.x + mark.width + edgeThickness) ||
-      (normalizedY >= mark.y - edgeThickness && normalizedY <= mark.y + edgeThickness) ||
-      (normalizedY >= mark.y + mark.height - edgeThickness && normalizedY <= mark.y + mark.height + edgeThickness)
-    );
-  };
-
-  const calculateBlendFactor = (x: number, y: number, width: number, height: number, mark: WatermarkMark): number => {
-    const normalizedX = x / width;
-    const normalizedY = y / height;
-    
-    const distanceToEdge = Math.min(
-      Math.abs(normalizedX - mark.x),
-      Math.abs(normalizedX - (mark.x + mark.width)),
-      Math.abs(normalizedY - mark.y),
-      Math.abs(normalizedY - (mark.y + mark.height))
-    );
-    
-    const maxBlendDistance = 0.02;
-    return Math.min(1, distanceToEdge / maxBlendDistance);
-  };
-
   const handleRemoveWatermark = async (imageItem: ImageItem) => {
     if (isProcessing) {
       toast.error("请等待当前任务完成", { duration: 800 });
@@ -711,8 +596,8 @@ const WatermarkRemover = () => {
 
     try {
       const progressInterval = setInterval(() => {
-        setProgress(prev => Math.min(prev + 12, 85));
-      }, 200);
+        setProgress(prev => Math.min(prev + 15, 85));
+      }, 100);
 
       const processedBlob = await processImageCanvas(
         imageItem.file, 
