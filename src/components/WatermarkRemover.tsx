@@ -7,6 +7,7 @@ import { Slider } from '@/components/ui/slider';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Upload, Download, Trash2, MapPin, RefreshCw, Settings, ZoomIn, ZoomOut, RotateCcw, Undo2, Sparkles, Info } from 'lucide-react';
 import { toast } from 'sonner';
+
 interface ImageItem {
   id: string;
   file: File;
@@ -900,8 +901,6 @@ const WatermarkRemover = () => {
       top: `${mark.y * 100}%`,
       width: `${mark.width * 100}%`,
       height: `${mark.height * 100}%`,
-      transform: `scale(${zoom})`,
-      transformOrigin: 'top left'
     }}>
         {/* 透明矩形背景 */}
         <div className={`absolute inset-0 ${selectedMark ? 'bg-blue-500' : 'bg-blue-500'} bg-opacity-10 transition-colors duration-200`} />
@@ -986,6 +985,7 @@ const WatermarkRemover = () => {
           </>}
       </div>;
   };
+
   const renderDragPreview = () => {
     if (!isMarkingMode || !dragState.isDragging || selectedMark) return null;
     const {
@@ -1003,18 +1003,17 @@ const WatermarkRemover = () => {
       top: `${top * 100}%`,
       width: `${width * 100}%`,
       height: `${height * 100}%`,
-      transform: `scale(${zoom})`,
-      transformOrigin: 'top left',
       borderWidth: `${Math.max(1, 2 / zoom)}px`
     }} />;
   };
+
   const selectedImage = images.find(img => img.id === selectedImageId);
   return <div className="h-full flex">
       {/* Left Sidebar */}
       <div className="w-80 flex-shrink-0 border-r bg-white">
         <div className="h-full flex flex-col p-4">
           {/* Upload Section */}
-          <div className="space-y-4 flex-shrink-0">
+          <div className="space-y-3 flex-shrink-0">
             <div className="text-center">
               <input type="file" accept="image/*" multiple onChange={handleFileUpload} className="hidden" id="file-upload" />
               <label htmlFor="file-upload">
@@ -1027,7 +1026,7 @@ const WatermarkRemover = () => {
               </label>
             </div>
 
-            {/* Algorithm Selection */}
+            {/* Algorithm Selection - 修改间距为12px */}
             <div className="flex items-center space-x-2">
               <label className="text-sm font-medium whitespace-nowrap">处理算法</label>
               <div className="flex items-center space-x-2 flex-1">
@@ -1080,11 +1079,10 @@ const WatermarkRemover = () => {
                 </Dialog>
               </div>
             </div>
-
-            
           </div>
           
-          <ScrollArea className="flex-1">
+          {/* 图片列表 - 添加 pt-3 来创建12px间距 */}
+          <ScrollArea className="flex-1 pt-3">
             <div className="space-y-2">
               {images.map(image => <div key={image.id} className={`flex items-center justify-between p-3 border rounded-md cursor-pointer transition-colors ${selectedImageId === image.id ? 'bg-blue-50 border-blue-200' : 'hover:bg-gray-50'}`} onClick={() => handleImageListClick(image.id)}>
                   <div className="flex-1 min-w-0">
@@ -1229,4 +1227,5 @@ const WatermarkRemover = () => {
       </div>
     </div>;
 };
+
 export default WatermarkRemover;
