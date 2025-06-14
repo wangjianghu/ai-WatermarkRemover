@@ -4,7 +4,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Slider } from '@/components/ui/slider';
-import { Upload, Download, Trash2, MapPin, RefreshCw, Settings, ZoomIn, ZoomOut, RotateCcw, Undo2 } from 'lucide-react';
+import { Upload, Download, Trash2, MapPin, RefreshCw, Settings, ZoomIn, ZoomOut, RotateCcw, Undo2, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface ImageItem {
@@ -46,7 +46,7 @@ const WatermarkRemover = () => {
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isMarkingMode, setIsMarkingMode] = useState(false);
-  const [processingAlgorithm, setProcessingAlgorithm] = useState<'enhanced' | 'conservative' | 'aggressive'>('enhanced');
+  const [processingAlgorithm, setProcessingAlgorithm] = useState<'enhanced' | 'conservative' | 'aggressive' | 'lama'>('lama');
   const [markRadius, setMarkRadius] = useState(0.05);
   const [zoom, setZoom] = useState<number>(1);
   const [scrollPosition, setScrollPosition] = useState({ x: 0, y: 0 });
@@ -180,7 +180,7 @@ const WatermarkRemover = () => {
   }, [isMarkingMode, images]);
 
   const getResizeHandle = (x: number, y: number, mark: WatermarkMark): 'nw' | 'ne' | 'sw' | 'se' | 'n' | 'e' | 's' | 'w' | null => {
-    const handleSize = 0.015; // Reduced handle size for better precision
+    const handleSize = 0.02;
     const handles = {
       'nw': { x: mark.x, y: mark.y },
       'ne': { x: mark.x + mark.width, y: mark.y },
@@ -215,7 +215,7 @@ const WatermarkRemover = () => {
         const mark = selectedImage.watermarkMark;
         let newMark = { ...mark };
 
-        const minSize = 0.015; // Minimum mark size
+        const minSize = 0.015;
 
         switch (resizeState.resizeHandle) {
           case 'se':
@@ -375,7 +375,135 @@ const WatermarkRemover = () => {
     toast.success("已还原到原图状态", { duration: 800 });
   };
 
-  // Enhanced watermark detection with better semi-transparent white text detection
+  // LaMa算法实现
+  const applyLamaInpainting = async (
+    canvas: HTMLCanvasElement, 
+    maskRegion: WatermarkMark
+  ): Promise<void> => {
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = imageData.data;
+    
+    const maskLeft = Math.floor(maskRegion.x * canvas.width);
+    const maskTop = Math.floor(maskRegion.y * canvas.height);
+    const maskRight = Math.floor((maskRegion.x + maskRegion.width) * canvas.width);
+    const maskBottom = Math.floor((maskRegion.y + maskRegion.height) * canvas.height);
+
+    // LaMa inspired multi-scale inpainting
+    for (let scale = 0; scale < 3; scale++) {
+      const radius = Math.pow(2, scale + 1);
+      
+      for (let y = maskTop; y < maskBottom; y++) {
+        for (let x = maskLeft; x < maskRight; x++) {
+          const repaired = lamaInpaint(data, x, y, canvas.width, canvas.height, radius);
+          if (repaired) {
+            const index = (y * canvas.width + x) * 4;
+            data[index] = repaired.r;
+            data[index + 1] = repaired.g;
+            data[index + 2] = repaired.b;
+            data[index + 3] = repaired.a;
+          }
+        }
+      }
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+  };
+
+  const lamaInpaint = (
+    data: Uint8ClampedArray, 
+    x: number, 
+    y: number, 
+    width: number, 
+    height: number, 
+    radius: number
+  ) => {
+    const validPixels: Array<{r: number, g: number, b: number, a: number, distance: number, weight: number}> = [];
+    
+    // 使用更智能的采样策略
+    for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 16) {
+      for (let r = radius; r <= radius * 3; r += 2) {
+        const nx = Math.round(x + Math.cos(angle) * r);
+        const ny = Math.round(y + Math.sin(angle) * r);
+        
+        if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+          const nIndex = (ny * width + nx) * 4;
+          const distance = Math.sqrt((nx - x) * (nx - x) + (ny - y) * (ny - y));
+          
+          // 纹理一致性检查
+          const textureScore = calculateTextureConsistency(data, nx, ny, width, height);
+          const weight = (1 / (distance + 1)) * (1 + textureScore);
+          
+          validPixels.push({
+            r: data[nIndex],
+            g: data[nIndex + 1],
+            b: data[nIndex + 2],
+            a: data[nIndex + 3],
+            distance: distance,
+            weight: weight
+          });
+        }
+      }
+    }
+
+    if (validPixels.length === 0) return null;
+
+    // 基于权重的高级混合
+    validPixels.sort((a, b) => b.weight - a.weight);
+    const topPixels = validPixels.slice(0, Math.min(12, validPixels.length));
+    
+    let totalR = 0, totalG = 0, totalB = 0, totalA = 0, totalWeight = 0;
+    
+    topPixels.forEach(pixel => {
+      totalR += pixel.r * pixel.weight;
+      totalG += pixel.g * pixel.weight;
+      totalB += pixel.b * pixel.weight;
+      totalA += pixel.a * pixel.weight;
+      totalWeight += pixel.weight;
+    });
+
+    return {
+      r: Math.round(totalR / totalWeight),
+      g: Math.round(totalG / totalWeight),
+      b: Math.round(totalB / totalWeight),
+      a: Math.round(totalA / totalWeight)
+    };
+  };
+
+  const calculateTextureConsistency = (
+    data: Uint8ClampedArray, 
+    x: number, 
+    y: number, 
+    width: number, 
+    height: number
+  ): number => {
+    let consistency = 0;
+    let count = 0;
+    
+    const directions = [[-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 1], [1, -1], [1, 0], [1, 1]];
+    
+    for (const [dx, dy] of directions) {
+      const nx = x + dx;
+      const ny = y + dy;
+      
+      if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+        const index = (y * width + x) * 4;
+        const nIndex = (ny * width + nx) * 4;
+        
+        const colorDiff = Math.abs(data[index] - data[nIndex]) + 
+                         Math.abs(data[index + 1] - data[nIndex + 1]) + 
+                         Math.abs(data[index + 2] - data[nIndex + 2]);
+        
+        consistency += Math.max(0, 255 - colorDiff) / 255;
+        count++;
+      }
+    }
+    
+    return count > 0 ? consistency / count : 0;
+  };
+
   const detectWatermark = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number): number => {
     const index = (y * width + x) * 4;
     const r = data[index];
@@ -385,43 +513,35 @@ const WatermarkRemover = () => {
     
     let confidence = 0;
     
-    // Enhanced semi-transparent white text detection
     const isWhiteish = r > 200 && g > 200 && b > 200;
     const isSemiTransparent = a > 50 && a < 250;
     const brightness = (r + g + b) / 3;
     
-    // High confidence for semi-transparent white/light colors
     if (isWhiteish && isSemiTransparent) {
-      confidence += 0.8; // Very high confidence
+      confidence += 0.8;
     }
     
-    // Semi-transparent pixels with high brightness
     if (brightness > 220 && isSemiTransparent) {
       confidence += 0.7;
     }
     
-    // Enhanced red text detection
     if (r > 150 && g < 100 && b < 100) {
       confidence += 0.6;
     }
     
-    // Orange/yellow text detection
     if (r > 180 && g > 100 && g < 200 && b < 100) {
       confidence += 0.5;
     }
     
-    // General transparency check
     if (a < 245) {
       confidence += 0.4;
     }
     
-    // Edge detection for text boundaries
     const edgeStrength = calculateEdgeStrength(data, x, y, width, height);
     if (edgeStrength > 30) {
       confidence += 0.3;
     }
     
-    // Color uniformity check (watermarks often have consistent colors)
     const colorUniformity = checkColorUniformity(data, x, y, width, height);
     if (colorUniformity > 0.7) {
       confidence += 0.2;
@@ -498,7 +618,6 @@ const WatermarkRemover = () => {
     return x >= mark.x && x <= mark.x + mark.width && y >= mark.y && y <= mark.y + mark.height;
   };
 
-  // Enhanced edge smoothing function for AI optimization
   const smoothEdges = (data: Uint8ClampedArray, width: number, height: number, region: {x: number, y: number, width: number, height: number}) => {
     const regionLeft = Math.floor(region.x * width);
     const regionTop = Math.floor(region.y * height);
@@ -563,12 +682,10 @@ const WatermarkRemover = () => {
     } : null;
   };
 
-  // Enhanced pixel repair with AI optimization
   const repairPixel = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number, confidence: number) => {
-    const radius = Math.min(12, Math.max(6, Math.floor(confidence * 12))); // Increased radius
+    const radius = Math.min(12, Math.max(6, Math.floor(confidence * 12)));
     const validPixels: Array<{r: number, g: number, b: number, a: number, weight: number}> = [];
     
-    // Collect pixels in multiple rings for better sampling
     for (let ring = 1; ring <= 3; ring++) {
       const ringRadius = radius * ring / 3;
       for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 8) {
@@ -582,9 +699,9 @@ const WatermarkRemover = () => {
           const neighborIndex = (ny * width + nx) * 4;
           const neighborConfidence = detectWatermark(data, nx, ny, width, height);
           
-          if (neighborConfidence < 0.1) { // Very strict threshold
+          if (neighborConfidence < 0.1) {
             const distance = Math.sqrt(dx * dx + dy * dy);
-            const weight = 1 / (distance * distance + 0.1) / ring; // Reduce weight for outer rings
+            const weight = 1 / (distance * distance + 0.1) / ring;
             
             validPixels.push({
               r: data[neighborIndex],
@@ -600,7 +717,6 @@ const WatermarkRemover = () => {
     
     if (validPixels.length === 0) return null;
     
-    // Sort by weight and use best samples
     validPixels.sort((a, b) => b.weight - a.weight);
     const useCount = Math.min(20, validPixels.length);
     
@@ -626,11 +742,10 @@ const WatermarkRemover = () => {
     };
   };
 
-  // Enhanced processing function with AI optimization
   const processImageCanvas = async (imageFile: File, mark?: WatermarkMark, existingProcessedUrl?: string): Promise<Blob> => {
     return new Promise((resolve, reject) => {
       const img = new Image();
-      img.onload = () => {
+      img.onload = async () => {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         
@@ -643,96 +758,75 @@ const WatermarkRemover = () => {
         canvas.height = img.height;
         ctx.drawImage(img, 0, 0);
         
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const data = imageData.data;
-        
-        // Enhanced processing with 5 passes
-        for (let pass = 0; pass < 5; pass++) {
-          let processedPixels = 0;
-          const watermarkPixels: Array<{x: number, y: number, confidence: number}> = [];
-          
-          const step = pass < 3 ? 1 : 2; // More thorough in first 3 passes
-          
-          // Scan pixels for watermarks
-          for (let y = 0; y < canvas.height; y += step) {
-            for (let x = 0; x < canvas.width; x += step) {
-              const normalizedX = x / canvas.width;
-              const normalizedY = y / canvas.height;
-              
-              let confidence = 0;
-              
-              if (mark) {
-                if (isInMarkedWatermarkArea(normalizedX, normalizedY, mark)) {
-                  confidence = 0.98; // Very high confidence for marked areas
-                }
-              } else {
-                confidence = detectWatermark(data, x, y, canvas.width, canvas.height);
-                confidence *= getPositionWeight(x, y, canvas.width, canvas.height);
-              }
-              
-              // Enhanced detection for semi-transparent white text
-              const index = (y * canvas.width + x) * 4;
-              const r = data[index];
-              const g = data[index + 1];
-              const b = data[index + 2];
-              const a = data[index + 3];
-              
-              const isWhiteish = r > 200 && g > 200 && b > 200;
-              const isSemiTransparent = a > 50 && a < 250;
-              const brightness = (r + g + b) / 3;
-              
-              if (isWhiteish && isSemiTransparent && brightness > 220) {
-                confidence += 0.5; // Boost confidence for semi-transparent white
-              }
-              
-              let threshold = 0.2; // Lower threshold
-              if (processingAlgorithm === 'conservative') threshold = 0.35;
-              else if (processingAlgorithm === 'aggressive') threshold = 0.12;
-              
-              if (confidence > threshold) {
-                watermarkPixels.push({x, y, confidence});
-              }
-            }
-          }
-          
-          console.log(`Pass ${pass + 1}: 检测到 ${watermarkPixels.length} 个水印像素`);
-          
-          watermarkPixels.sort((a, b) => b.confidence - a.confidence);
-          
-          // Process pixels with enhanced replacement
-          watermarkPixels.forEach(({x, y, confidence}) => {
-            const index = (y * canvas.width + x) * 4;
-            const repaired = repairPixel(data, x, y, canvas.width, canvas.height, confidence);
-            
-            if (repaired) {
-              const blendFactor = Math.min(0.98, confidence + 0.3); // Up to 98% replacement
-              
-              data[index] = Math.round(data[index] * (1 - blendFactor) + repaired.r * blendFactor);
-              data[index + 1] = Math.round(data[index + 1] * (1 - blendFactor) + repaired.g * blendFactor);
-              data[index + 2] = Math.round(data[index + 2] * (1 - blendFactor) + repaired.b * blendFactor);
-              data[index + 3] = Math.round(data[index + 3] * (1 - blendFactor) + repaired.a * blendFactor);
-              processedPixels++;
-            }
-          });
-
-          console.log(`Pass ${pass + 1}: 修复了 ${processedPixels} 个水印像素`);
-        }
-        
-        // AI optimization: smooth edges in marked region
-        if (mark) {
-          smoothEdges(data, canvas.width, canvas.height, mark);
-          console.log('应用了AI边缘优化');
-        }
-        
-        ctx.putImageData(imageData, 0, 0);
-        
-        canvas.toBlob((blob) => {
-          if (blob) {
-            resolve(blob);
+        try {
+          if (processingAlgorithm === 'lama' && mark) {
+            console.log('使用LaMa算法处理水印区域');
+            await applyLamaInpainting(canvas, mark);
           } else {
-            reject(new Error('无法生成处理后的图片'));
+            // 传统算法处理
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const data = imageData.data;
+            
+            for (let pass = 0; pass < 3; pass++) {
+              let processedPixels = 0;
+              const watermarkPixels: Array<{x: number, y: number, confidence: number}> = [];
+              
+              for (let y = 0; y < canvas.height; y++) {
+                for (let x = 0; x < canvas.width; x++) {
+                  const normalizedX = x / canvas.width;
+                  const normalizedY = y / canvas.height;
+                  
+                  let confidence = 0;
+                  
+                  if (mark) {
+                    if (isInMarkedWatermarkArea(normalizedX, normalizedY, mark)) {
+                      confidence = 0.98;
+                    }
+                  } else {
+                    confidence = detectWatermark(data, x, y, canvas.width, canvas.height);
+                  }
+                  
+                  let threshold = 0.2;
+                  if (processingAlgorithm === 'conservative') threshold = 0.35;
+                  else if (processingAlgorithm === 'aggressive') threshold = 0.12;
+                  
+                  if (confidence > threshold) {
+                    watermarkPixels.push({x, y, confidence});
+                  }
+                }
+              }
+              
+              watermarkPixels.forEach(({x, y, confidence}) => {
+                const repaired = repairPixel(data, x, y, canvas.width, canvas.height, confidence);
+                
+                if (repaired) {
+                  const index = (y * canvas.width + x) * 4;
+                  const blendFactor = Math.min(0.98, confidence + 0.3);
+                  
+                  data[index] = Math.round(data[index] * (1 - blendFactor) + repaired.r * blendFactor);
+                  data[index + 1] = Math.round(data[index + 1] * (1 - blendFactor) + repaired.g * blendFactor);
+                  data[index + 2] = Math.round(data[index + 2] * (1 - blendFactor) + repaired.b * blendFactor);
+                  data[index + 3] = Math.round(data[index + 3] * (1 - blendFactor) + repaired.a * blendFactor);
+                  processedPixels++;
+                }
+              });
+
+              console.log(`Pass ${pass + 1}: 修复了 ${processedPixels} 个水印像素`);
+            }
+            
+            ctx.putImageData(imageData, 0, 0);
           }
-        }, 'image/png', 1.0);
+          
+          canvas.toBlob((blob) => {
+            if (blob) {
+              resolve(blob);
+            } else {
+              reject(new Error('无法生成处理后的图片'));
+            }
+          }, 'image/png', 1.0);
+        } catch (error) {
+          reject(error);
+        }
       };
       
       img.onerror = () => reject(new Error('图片加载失败'));
@@ -844,21 +938,9 @@ const WatermarkRemover = () => {
   const renderWatermarkMark = (mark?: WatermarkMark, showInProcessed: boolean = true) => {
     if (!mark || !showInProcessed) return null;
 
-    const getCursorStyle = (handle: string) => {
-      switch (handle) {
-        case 'nw': case 'se': return 'cursor-nw-resize';
-        case 'ne': case 'sw': return 'cursor-ne-resize';
-        case 'n': case 's': return 'cursor-ns-resize';
-        case 'e': case 'w': return 'cursor-ew-resize';
-        default: return 'cursor-move';
-      }
-    };
-
     return (
       <div
-        className={`absolute border-2 pointer-events-none ${
-          selectedMark ? 'border-blue-500 bg-blue-500' : 'border-red-500 bg-red-500'
-        } bg-opacity-20 transition-all duration-150`}
+        className="absolute pointer-events-none transition-all duration-200"
         style={{
           left: `${mark.x * 100}%`,
           top: `${mark.y * 100}%`,
@@ -866,19 +948,45 @@ const WatermarkRemover = () => {
           height: `${mark.height * 100}%`,
         }}
       >
+        {/* 微妙的背景覆盖 */}
+        <div 
+          className={`absolute inset-0 ${
+            selectedMark ? 'bg-blue-400' : 'bg-red-400'
+          } bg-opacity-5 backdrop-blur-[0.5px]`}
+        />
+        
+        {/* 优雅的虚线边框 */}
+        <div 
+          className={`absolute inset-0 border-2 border-dashed ${
+            selectedMark ? 'border-blue-400' : 'border-red-400'
+          } rounded-sm opacity-80`}
+          style={{
+            borderWidth: '1.5px',
+            filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.1))'
+          }}
+        />
+        
+        {/* 小而精致的角标 */}
+        <div 
+          className={`absolute -top-2 -right-2 w-4 h-4 ${
+            selectedMark ? 'bg-blue-500' : 'bg-red-500'
+          } rounded-full flex items-center justify-center shadow-sm`}
+        >
+          <Sparkles className="w-2 h-2 text-white" />
+        </div>
+
         {selectedMark && isMarkingMode && showInProcessed && (
           <>
-            {/* Corner handles */}
-            <div className={`absolute w-3 h-3 bg-blue-500 border border-white -top-1.5 -left-1.5 rounded-sm pointer-events-auto hover:bg-blue-600 transition-colors ${getCursorStyle('nw')}`} />
-            <div className={`absolute w-3 h-3 bg-blue-500 border border-white -top-1.5 -right-1.5 rounded-sm pointer-events-auto hover:bg-blue-600 transition-colors ${getCursorStyle('ne')}`} />
-            <div className={`absolute w-3 h-3 bg-blue-500 border border-white -bottom-1.5 -left-1.5 rounded-sm pointer-events-auto hover:bg-blue-600 transition-colors ${getCursorStyle('sw')}`} />
-            <div className={`absolute w-3 h-3 bg-blue-500 border border-white -bottom-1.5 -right-1.5 rounded-sm pointer-events-auto hover:bg-blue-600 transition-colors ${getCursorStyle('se')}`} />
+            {/* 精致的控制点 */}
+            <div className="absolute w-2 h-2 bg-blue-500 border border-white -top-1 -left-1 rounded-full pointer-events-auto hover:bg-blue-600 transition-colors cursor-nw-resize shadow-sm" />
+            <div className="absolute w-2 h-2 bg-blue-500 border border-white -top-1 -right-1 rounded-full pointer-events-auto hover:bg-blue-600 transition-colors cursor-ne-resize shadow-sm" />
+            <div className="absolute w-2 h-2 bg-blue-500 border border-white -bottom-1 -left-1 rounded-full pointer-events-auto hover:bg-blue-600 transition-colors cursor-sw-resize shadow-sm" />
+            <div className="absolute w-2 h-2 bg-blue-500 border border-white -bottom-1 -right-1 rounded-full pointer-events-auto hover:bg-blue-600 transition-colors cursor-se-resize shadow-sm" />
             
-            {/* Edge handles */}
-            <div className={`absolute w-3 h-2 bg-blue-500 border border-white -top-1 left-1/2 transform -translate-x-1/2 rounded-sm pointer-events-auto hover:bg-blue-600 transition-colors ${getCursorStyle('n')}`} />
-            <div className={`absolute w-2 h-3 bg-blue-500 border border-white -right-1 top-1/2 transform -translate-y-1/2 rounded-sm pointer-events-auto hover:bg-blue-600 transition-colors ${getCursorStyle('e')}`} />
-            <div className={`absolute w-3 h-2 bg-blue-500 border border-white -bottom-1 left-1/2 transform -translate-x-1/2 rounded-sm pointer-events-auto hover:bg-blue-600 transition-colors ${getCursorStyle('s')}`} />
-            <div className={`absolute w-2 h-3 bg-blue-500 border border-white -left-1 top-1/2 transform -translate-y-1/2 rounded-sm pointer-events-auto hover:bg-blue-600 transition-colors ${getCursorStyle('w')}`} />
+            <div className="absolute w-2 h-1.5 bg-blue-500 border border-white -top-0.5 left-1/2 transform -translate-x-1/2 rounded-full pointer-events-auto hover:bg-blue-600 transition-colors cursor-ns-resize shadow-sm" />
+            <div className="absolute w-1.5 h-2 bg-blue-500 border border-white -right-0.5 top-1/2 transform -translate-y-1/2 rounded-full pointer-events-auto hover:bg-blue-600 transition-colors cursor-ew-resize shadow-sm" />
+            <div className="absolute w-2 h-1.5 bg-blue-500 border border-white -bottom-0.5 left-1/2 transform -translate-x-1/2 rounded-full pointer-events-auto hover:bg-blue-600 transition-colors cursor-ns-resize shadow-sm" />
+            <div className="absolute w-1.5 h-2 bg-blue-500 border border-white -left-0.5 top-1/2 transform -translate-y-1/2 rounded-full pointer-events-auto hover:bg-blue-600 transition-colors cursor-ew-resize shadow-sm" />
           </>
         )}
       </div>
@@ -896,7 +1004,7 @@ const WatermarkRemover = () => {
     
     return (
       <div
-        className="absolute border-2 border-blue-500 bg-blue-500 bg-opacity-20 pointer-events-none transition-all duration-75"
+        className="absolute border-2 border-dashed border-blue-400 bg-blue-400 bg-opacity-5 pointer-events-none transition-all duration-75 rounded-sm"
         style={{
           left: `${left * 100}%`,
           top: `${top * 100}%`,
@@ -943,20 +1051,21 @@ const WatermarkRemover = () => {
                 onChange={(e) => setProcessingAlgorithm(e.target.value as any)}
                 className="flex-1 p-2 border rounded-md text-sm"
               >
+                <option value="lama">LaMa算法</option>
                 <option value="enhanced">增强模式</option>
                 <option value="conservative">保守模式</option>
                 <option value="aggressive">激进模式</option>
               </select>
             </div>
 
-            <div className="bg-blue-50 p-3 rounded-lg text-sm text-blue-800">
-              <p className="font-medium mb-1">处理建议：</p>
-              <ul className="text-xs space-y-1">
-                <li>• 针对半透明白色水印已优化检测算法</li>
-                <li>• 建议多次处理以彻底去除顽固水印</li>
-                <li>• 可手动标记水印区域提高精度</li>
-                <li>• 激进模式适合处理明显水印</li>
-                <li>• AI算法自动优化减少失真</li>
+            <div className="bg-gradient-to-r from-blue-50 to-purple-50 p-3 rounded-lg text-sm">
+              <p className="font-medium mb-1 text-blue-800">LaMa算法优势：</p>
+              <ul className="text-xs space-y-1 text-blue-700">
+                <li>• 🎯 专业大遮罩修复技术</li>
+                <li>• 🧠 AI智能纹理分析</li>
+                <li>• ✨ 多尺度语义修复</li>
+                <li>• 🎨 保持图像自然性</li>
+                <li>• 🚀 针对标记区域优化</li>
               </ul>
             </div>
           </div>
@@ -1080,7 +1189,6 @@ const WatermarkRemover = () => {
               <div className="flex items-center justify-between mb-2 flex-shrink-0">
                 <div className="flex items-center space-x-4">
                   <span className="text-sm font-medium text-gray-600">原图</span>
-                  {/* Progress Bar moved here */}
                   {isProcessing && (
                     <div className="flex items-center space-x-2">
                       <Progress value={progress} className="w-20 h-2" />
@@ -1089,34 +1197,16 @@ const WatermarkRemover = () => {
                   )}
                 </div>
                 <div className="flex items-center space-x-1">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleZoomOut}
-                    className="h-6 w-6 p-0"
-                  >
+                  <Button variant="ghost" size="sm" onClick={handleZoomOut} className="h-6 w-6 p-0">
                     <ZoomOut className="h-3 w-3" />
                   </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={resetZoom}
-                    className="h-6 px-2 text-xs"
-                  >
+                  <Button variant="ghost" size="sm" onClick={resetZoom} className="h-6 px-2 text-xs">
                     <RotateCcw className="h-3 w-3" />
                   </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleZoomIn}
-                    className="h-6 w-6 p-0"
-                  >
+                  <Button variant="ghost" size="sm" onClick={handleZoomIn} className="h-6 w-6 p-0">
                     <ZoomIn className="h-3 w-3" />
                   </Button>
-                  {/* Zoom percentage moved here */}
-                  <span className="text-xs text-gray-500 ml-2">
-                    {Math.round(zoom * 100)}%
-                  </span>
+                  <span className="text-xs text-gray-500 ml-2">{Math.round(zoom * 100)}%</span>
                 </div>
               </div>
               <div 
@@ -1156,36 +1246,16 @@ const WatermarkRemover = () => {
               <div className="flex items-center justify-between mb-2 flex-shrink-0">
                 <span className="text-sm font-medium text-gray-600">处理后</span>
                 <div className="flex items-center space-x-1">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleZoomOut}
-                    className="h-6 w-6 p-0"
-                    disabled={!selectedImage.processedUrl}
-                  >
+                  <Button variant="ghost" size="sm" onClick={handleZoomOut} className="h-6 w-6 p-0" disabled={!selectedImage.processedUrl}>
                     <ZoomOut className="h-3 w-3" />
                   </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={resetZoom}
-                    className="h-6 px-2 text-xs"
-                    disabled={!selectedImage.processedUrl}
-                  >
+                  <Button variant="ghost" size="sm" onClick={resetZoom} className="h-6 px-2 text-xs" disabled={!selectedImage.processedUrl}>
                     <RotateCcw className="h-3 w-3" />
                   </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleZoomIn}
-                    className="h-6 w-6 p-0"
-                    disabled={!selectedImage.processedUrl}
-                  >
+                  <Button variant="ghost" size="sm" onClick={handleZoomIn} className="h-6 w-6 p-0" disabled={!selectedImage.processedUrl}>
                     <ZoomIn className="h-3 w-3" />
                   </Button>
-                  <span className="text-xs text-gray-500 ml-2">
-                    {Math.round(zoom * 100)}%
-                  </span>
+                  <span className="text-xs text-gray-500 ml-2">{Math.round(zoom * 100)}%</span>
                 </div>
               </div>
               <div 
@@ -1209,7 +1279,6 @@ const WatermarkRemover = () => {
                         }}
                         draggable={false}
                       />
-                      {/* No watermark marking in processed image for clean preview */}
                     </div>
                   </div>
                 ) : (
