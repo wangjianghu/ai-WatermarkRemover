@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
 import { Upload, Download, Trash2, Play, RotateCcw, ZoomIn, ZoomOut } from "lucide-react";
-import { EnhancedWatermarkProcessor } from './EnhancedWatermarkProcessor';
+import { OptimizedWatermarkProcessor } from './OptimizedWatermarkProcessor';
 
 interface ProcessedImageData {
   id: string;
@@ -19,7 +19,7 @@ interface ProcessedImageData {
 export const WatermarkRemover = () => {
   const [images, setImages] = useState<ProcessedImageData[]>([]);
   const [dragActive, setDragActive] = useState(false);
-  const [processor] = useState(() => new EnhancedWatermarkProcessor());
+  const [processor] = useState(() => new OptimizedWatermarkProcessor());
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
   const [zoomLevel, setZoomLevel] = useState(1);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -89,7 +89,7 @@ export const WatermarkRemover = () => {
     } : img));
 
     try {
-      toast.info("🚀 启动深度学习AI去水印引擎");
+      toast.info("🚀 启动优化版AI去水印引擎");
 
       const processedBlob = await processor.removeWatermark(
         image.originalFile,
@@ -110,7 +110,7 @@ export const WatermarkRemover = () => {
         progress: 100
       } : img));
 
-      toast.success("✨ AI深度去水印完成！水印已智能去除");
+      toast.success("✨ 优化版AI去水印完成！处理速度更快");
     } catch (error) {
       console.error("处理失败:", error);
       setImages(prev => prev.map(img => img.id === imageId ? {
@@ -119,14 +119,14 @@ export const WatermarkRemover = () => {
         progress: 0
       } : img));
       
-      toast.error("处理失败，请重试");
+      toast.error(`处理失败: ${error instanceof Error ? error.message : '未知错误'}`);
     }
   };
 
   const downloadImage = (url: string, filename: string) => {
     const link = document.createElement('a');
     link.href = url;
-    link.download = `ai_dewatermark_${filename}`;
+    link.download = `optimized_dewatermark_${filename}`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -163,7 +163,7 @@ export const WatermarkRemover = () => {
             支持 JPG、PNG、WebP 格式，可批量上传
           </p>
           <p className="text-green-300 text-sm mb-3">
-            🔥 全新AI算法：深度学习 + OpenCV + 多算法融合
+            🔥 优化版算法：Web Worker + 分块处理 + 智能压缩
           </p>
           <Button
             onClick={() => fileInputRef.current?.click()}
@@ -226,7 +226,7 @@ export const WatermarkRemover = () => {
                         {/* 处理进度 */}
                         {image.isProcessing && (
                           <div className="absolute bottom-0 left-0 right-0 bg-black/50 p-2">
-                            <div className="text-xs text-white mb-1">AI处理中...</div>
+                            <div className="text-xs text-white mb-1">处理中 {image.progress}%</div>
                             <Progress value={image.progress} className="h-1" />
                           </div>
                         )}
@@ -321,7 +321,7 @@ export const WatermarkRemover = () => {
                           className="bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600"
                         >
                           <Play className="w-4 h-4 mr-2" />
-                          开始AI去水印
+                          开始去水印
                         </Button>
                       )}
                       
@@ -338,22 +338,26 @@ export const WatermarkRemover = () => {
                   </div>
                 </Card>
 
-                {/* 图片对比区域 */}
+                {/* 图片对比区域 - 完整显示，无遮挡 */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                   {/* 原图 */}
                   <Card className="bg-white/10 backdrop-blur-lg border border-white/20">
                     <div className="p-4">
                       <h4 className="text-white font-medium mb-3 text-center">原图</h4>
-                      <div className="bg-white/5 rounded-lg overflow-hidden" style={{ minHeight: '400px' }}>
-                        <div className="overflow-auto max-h-[600px]" style={{ scrollbarWidth: 'thin' }}>
+                      <div className="bg-white/5 rounded-lg overflow-hidden">
+                        <div className="overflow-auto" style={{ 
+                          maxHeight: '70vh',
+                          scrollbarWidth: 'thin',
+                          scrollbarColor: 'rgba(255,255,255,0.3) transparent'
+                        }}>
                           <img
                             src={selectedImage.originalUrl}
                             alt="原图"
-                            className="w-full h-auto object-contain"
+                            className="w-full h-auto object-contain block"
                             style={{ 
                               transform: `scale(${zoomLevel})`,
                               transformOrigin: 'top left',
-                              minWidth: '100%'
+                              minWidth: zoomLevel > 1 ? `${100 * zoomLevel}%` : '100%'
                             }}
                           />
                         </div>
@@ -364,43 +368,46 @@ export const WatermarkRemover = () => {
                   {/* 处理后图片 */}
                   <Card className="bg-white/10 backdrop-blur-lg border border-white/20">
                     <div className="p-4">
-                      <h4 className="text-white font-medium mb-3 text-center">AI去水印后</h4>
-                      <div className="bg-white/5 rounded-lg overflow-hidden" style={{ minHeight: '400px' }}>
+                      <h4 className="text-white font-medium mb-3 text-center">去水印后</h4>
+                      <div className="bg-white/5 rounded-lg overflow-hidden">
                         {selectedImage.isProcessing ? (
-                          <div className="flex items-center justify-center h-full min-h-[400px]">
+                          <div className="flex items-center justify-center" style={{ minHeight: '300px' }}>
                             <div className="text-center">
                               <div className="animate-spin w-12 h-12 border-4 border-blue-400 border-t-transparent rounded-full mx-auto mb-4"></div>
-                              <div className="text-white font-medium mb-2">AI深度处理中...</div>
+                              <div className="text-white font-medium mb-2">优化处理中...</div>
                               <Progress value={selectedImage.progress} className="w-64 mb-2" />
                               <div className="text-blue-200 text-sm">
                                 {selectedImage.progress}% - 
-                                {selectedImage.progress < 20 ? ' 深度学习预处理' :
-                                 selectedImage.progress < 40 ? ' 智能水印检测' :
-                                 selectedImage.progress < 70 ? ' 多算法融合修复' :
-                                 selectedImage.progress < 90 ? ' 深度优化处理' : ' 最终渲染'}
+                                {selectedImage.progress < 30 ? ' 图像压缩优化' :
+                                 selectedImage.progress < 60 ? ' 水印区域检测' :
+                                 selectedImage.progress < 90 ? ' 智能修复处理' : ' 最终优化'}
                               </div>
                             </div>
                           </div>
                         ) : selectedImage.processedUrl ? (
-                          <div className="overflow-auto max-h-[600px]" style={{ scrollbarWidth: 'thin' }}>
+                          <div className="overflow-auto" style={{ 
+                            maxHeight: '70vh',
+                            scrollbarWidth: 'thin',
+                            scrollbarColor: 'rgba(255,255,255,0.3) transparent'
+                          }}>
                             <img
                               src={selectedImage.processedUrl}
                               alt="处理后"
-                              className="w-full h-auto object-contain"
+                              className="w-full h-auto object-contain block"
                               style={{ 
                                 transform: `scale(${zoomLevel})`,
                                 transformOrigin: 'top left',
-                                minWidth: '100%'
+                                minWidth: zoomLevel > 1 ? `${100 * zoomLevel}%` : '100%'
                               }}
                             />
                           </div>
                         ) : (
-                          <div className="flex items-center justify-center h-full min-h-[400px]">
+                          <div className="flex items-center justify-center" style={{ minHeight: '300px' }}>
                             <div className="text-center">
-                              <div className="text-4xl mb-4">🚀</div>
-                              <div className="text-white/60 mb-2">点击"开始AI去水印"处理图片</div>
+                              <div className="text-4xl mb-4">⚡</div>
+                              <div className="text-white/60 mb-2">点击"开始去水印"处理图片</div>
                               <div className="text-blue-400/60 text-sm">
-                                深度学习 + OpenCV + 多算法融合
+                                优化版算法 - 更快更稳定
                               </div>
                             </div>
                           </div>
@@ -415,9 +422,9 @@ export const WatermarkRemover = () => {
                   <Card className="bg-gradient-to-r from-green-500/20 to-emerald-500/20 border-green-400/30">
                     <div className="p-4 text-center">
                       <div className="text-2xl mb-2">✨</div>
-                      <div className="text-white font-medium mb-1">AI去水印处理完成！</div>
+                      <div className="text-white font-medium mb-1">去水印处理完成！</div>
                       <div className="text-green-200 text-sm">
-                        水印已通过深度学习算法智能去除，可放大查看细节效果
+                        使用优化算法处理，页面响应更流畅，可放大查看细节效果
                       </div>
                     </div>
                   </Card>
@@ -429,7 +436,7 @@ export const WatermarkRemover = () => {
                   <div className="text-4xl mb-4">🖼️</div>
                   <div className="text-white font-medium mb-2">选择图片开始处理</div>
                   <div className="text-white/60">
-                    从左侧列表选择一张图片进行AI去水印处理
+                    从左侧列表选择一张图片进行去水印处理
                   </div>
                 </div>
               </Card>
@@ -440,23 +447,23 @@ export const WatermarkRemover = () => {
         <div className="text-center py-16">
           <div className="text-6xl mb-4">🎯</div>
           <h3 className="text-2xl font-semibold text-white mb-2">
-            AI智能去水印工具
+            优化版AI去水印工具
           </h3>
           <p className="text-blue-200 mb-4">
-            深度学习 + OpenCV + 多算法融合，水印去除效果更佳
+            Web Worker + 分块处理 + 智能压缩，解决页面卡顿问题
           </p>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-2xl mx-auto text-sm text-white/80">
             <div className="bg-white/5 rounded-lg p-4">
-              <div className="text-lg mb-2">🧠</div>
-              <div>深度学习预处理</div>
-            </div>
-            <div className="bg-white/5 rounded-lg p-4">
-              <div className="text-lg mb-2">🔍</div>
-              <div>智能水印检测</div>
-            </div>
-            <div className="bg-white/5 rounded-lg p-4">
               <div className="text-lg mb-2">⚡</div>
-              <div>多算法融合修复</div>
+              <div>Web Worker处理</div>
+            </div>
+            <div className="bg-white/5 rounded-lg p-4">
+              <div className="text-lg mb-2">📊</div>
+              <div>实时进度反馈</div>
+            </div>
+            <div className="bg-white/5 rounded-lg p-4">
+              <div className="text-lg mb-2">🚀</div>
+              <div>智能压缩优化</div>
             </div>
           </div>
         </div>
