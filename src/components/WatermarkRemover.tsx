@@ -1,4 +1,3 @@
-
 import React, { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -66,23 +65,13 @@ const WatermarkRemover = () => {
     
     const brightness = (r + g + b) / 3;
     
-    // 检测透明度异常
     const isTransparent = a < 200;
-    
-    // 检测极端亮度
     const isExtremeBright = brightness > 220 || brightness < 40;
-    
-    // 检测高对比度
     const contrast = calculateLocalContrast(data, x, y, width, height);
     const hasHighContrast = contrast > 60;
-    
-    // 检测文字特征
     const isTextLike = detectTextFeatures(data, x, y, width, height);
-    
-    // 检测颜色单调性（水印通常颜色单一）
     const isMonochrome = Math.abs(r - g) < 15 && Math.abs(g - b) < 15 && Math.abs(r - b) < 15;
     
-    // 综合判断
     let suspicionScore = 0;
     if (isTransparent) suspicionScore += 0.4;
     if (isExtremeBright) suspicionScore += 0.3;
@@ -117,7 +106,6 @@ const WatermarkRemover = () => {
   };
 
   const detectTextFeatures = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number): boolean => {
-    // 检测边缘密度
     let edgeCount = 0;
     let totalPixels = 0;
     const radius = 2;
@@ -175,7 +163,6 @@ const WatermarkRemover = () => {
         if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
           const neighborIndex = (ny * width + nx) * 4;
           
-          // 检查邻居是否也是水印
           if (!isWatermarkPixel(data, neighborIndex, nx, ny, width, height)) {
             const distance = Math.sqrt(dx * dx + dy * dy);
             const weight = 1 / (distance * distance + 0.1);
@@ -194,7 +181,6 @@ const WatermarkRemover = () => {
     
     if (validPixels.length === 0) return null;
     
-    // 加权平均修复
     let totalR = 0, totalG = 0, totalB = 0, totalA = 0, totalWeight = 0;
     
     validPixels.forEach(pixel => {
@@ -214,14 +200,12 @@ const WatermarkRemover = () => {
   };
 
   const applyPostProcessing = (data: Uint8ClampedArray, width: number, height: number) => {
-    // 应用轻微的高斯模糊来平滑修复区域
     const tempData = new Uint8ClampedArray(data);
     
     for (let y = 1; y < height - 1; y++) {
       for (let x = 1; x < width - 1; x++) {
         const index = (y * width + x) * 4;
         
-        // 只对修复过的区域应用后处理
         if (needsSmoothing(tempData, x, y, width, height)) {
           for (let c = 0; c < 3; c++) {
             let sum = 0;
@@ -245,7 +229,6 @@ const WatermarkRemover = () => {
   };
 
   const needsSmoothing = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number): boolean => {
-    // 检查像素是否需要平滑处理
     const centerIndex = (y * width + x) * 4;
     let variance = 0;
     let count = 0;
@@ -289,19 +272,11 @@ const WatermarkRemover = () => {
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         const data = imageData.data;
 
-        // 改进的水印检测和去除算法
         for (let i = 0; i < data.length; i += 4) {
           const x = (i / 4) % canvas.width;
           const y = Math.floor((i / 4) / canvas.width);
           
-          const r = data[i];
-          const g = data[i + 1];
-          const b = data[i + 2];
-          const a = data[i + 3];
-          
-          // 检测水印特征
           if (isWatermarkPixel(data, i, x, y, canvas.width, canvas.height)) {
-            // 使用更大范围的邻域进行修复
             const repaired = repairPixel(data, x, y, canvas.width, canvas.height, 8);
             if (repaired) {
               data[i] = repaired.r;
@@ -312,7 +287,6 @@ const WatermarkRemover = () => {
           }
         }
 
-        // 应用后处理滤波
         applyPostProcessing(data, canvas.width, canvas.height);
         
         ctx.putImageData(imageData, 0, 0);
@@ -346,7 +320,6 @@ const WatermarkRemover = () => {
     setProgress(0);
 
     try {
-      // 模拟进度更新
       const progressInterval = setInterval(() => {
         setProgress(prev => Math.min(prev + 10, 90));
       }, 200);
@@ -426,8 +399,8 @@ const WatermarkRemover = () => {
     }
     
     return {
-      width: displayWidth * zoomLevel,
-      height: displayHeight * zoomLevel
+      width: displayWidth,
+      height: displayHeight
     };
   };
 
@@ -506,19 +479,30 @@ const WatermarkRemover = () => {
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-semibold">图片对比</h2>
               {selectedImage && (
-                <div className="flex items-center space-x-2">
-                  <Button variant="outline" size="icon" onClick={handleZoomIn}>
-                    <ZoomIn className="h-4 w-4" />
-                  </Button>
-                  <Button variant="outline" size="icon" onClick={handleZoomOut}>
-                    <ZoomOut className="h-4 w-4" />
-                  </Button>
-                  <Button variant="outline" size="icon" onClick={() => handleRotate(selectedImageId!)}>
-                    <RotateCcw className="h-4 w-4" />
-                  </Button>
-                  <span className="text-sm text-gray-600">
-                    {Math.round(zoomLevel * 100)}%
-                  </span>
+                <div className="flex items-center justify-between w-full ml-8">
+                  <div className="flex items-center justify-center space-x-2">
+                    <Button variant="outline" size="icon" onClick={handleZoomIn}>
+                      <ZoomIn className="h-4 w-4" />
+                    </Button>
+                    <Button variant="outline" size="icon" onClick={handleZoomOut}>
+                      <ZoomOut className="h-4 w-4" />
+                    </Button>
+                    <Button variant="outline" size="icon" onClick={() => handleRotate(selectedImageId!)}>
+                      <RotateCcw className="h-4 w-4" />
+                    </Button>
+                    <span className="text-sm text-gray-600">
+                      {Math.round(zoomLevel * 100)}%
+                    </span>
+                  </div>
+                  {selectedImage.processedUrl && (
+                    <Button 
+                      onClick={() => handleDownload(selectedImage)}
+                      className="flex items-center space-x-2 ml-4"
+                    >
+                      <Download className="h-4 w-4" />
+                      <span>下载处理后的图片</span>
+                    </Button>
+                  )}
                 </div>
               )}
             </div>
@@ -538,9 +522,12 @@ const WatermarkRemover = () => {
                       <img
                         src={selectedImage.url}
                         alt={selectedImage.file.name}
-                        className="max-w-full max-h-full object-contain"
+                        className="object-contain"
                         style={{
-                          transform: `rotate(${selectedImage.rotation}deg)`,
+                          transform: `rotate(${selectedImage.rotation}deg) scale(${zoomLevel})`,
+                          maxWidth: '100%',
+                          maxHeight: '100%',
+                          transformOrigin: 'center center'
                         }}
                       />
                     </div>
@@ -559,9 +546,12 @@ const WatermarkRemover = () => {
                         <img
                           src={selectedImage.processedUrl}
                           alt={`处理后的 ${selectedImage.file.name}`}
-                          className="max-w-full max-h-full object-contain"
+                          className="object-contain"
                           style={{
-                            transform: `rotate(${selectedImage.rotation}deg)`,
+                            transform: `rotate(${selectedImage.rotation}deg) scale(${zoomLevel})`,
+                            maxWidth: '100%',
+                            maxHeight: '100%',
+                            transformOrigin: 'center center'
                           }}
                         />
                       ) : (
@@ -579,18 +569,6 @@ const WatermarkRemover = () => {
                     </div>
                   </div>
                 </div>
-                
-                {selectedImage.processedUrl && (
-                  <div className="flex justify-center mt-6">
-                    <Button 
-                      onClick={() => handleDownload(selectedImage)}
-                      className="flex items-center space-x-2"
-                    >
-                      <Download className="h-4 w-4" />
-                      <span>下载处理后的图片</span>
-                    </Button>
-                  </div>
-                )}
               </div>
             ) : (
               <div className="flex items-center justify-center h-64 text-gray-500 border-2 border-dashed border-gray-200 rounded-lg">
