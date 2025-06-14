@@ -1,9 +1,9 @@
-
 import React, { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { Upload, Download, Trash2, MapPin, RefreshCw, Settings } from 'lucide-react';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Upload, Download, Trash2, MapPin, RefreshCw, Settings, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface ImageItem {
@@ -14,6 +14,7 @@ interface ImageItem {
   rotation: number;
   dimensions?: { width: number; height: number };
   watermarkMarks?: Array<{x: number, y: number, radius: number}>;
+  processCount: number; // 处理次数计数
 }
 
 interface WatermarkMark {
@@ -29,6 +30,8 @@ const WatermarkRemover = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isMarkingMode, setIsMarkingMode] = useState(false);
   const [processingAlgorithm, setProcessingAlgorithm] = useState<'enhanced' | 'conservative' | 'aggressive'>('enhanced');
+  const [originalZoom, setOriginalZoom] = useState<number>(1);
+  const [processedZoom, setProcessedZoom] = useState<number>(1);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const loadImageDimensions = (file: File): Promise<{ width: number; height: number }> => {
@@ -55,6 +58,7 @@ const WatermarkRemover = () => {
             rotation: 0,
             dimensions,
             watermarkMarks: [],
+            processCount: 0,
           };
         })
       );
@@ -96,7 +100,6 @@ const WatermarkRemover = () => {
     );
   };
 
-  // 增强水印检测算法
   const detectWatermark = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number): number => {
     const index = (y * width + x) * 4;
     const r = data[index];
@@ -106,69 +109,55 @@ const WatermarkRemover = () => {
     
     let confidence = 0;
     
-    // 1. 透明度检测 - 水印通常半透明
     if (a < 245) {
       confidence += 0.3;
       if (a < 200) confidence += 0.2;
     }
     
-    // 2. 亮度检测 - 水印通常是白色或很暗的文字
     const brightness = (r + g + b) / 3;
     if (brightness > 220 || brightness < 50) {
       confidence += 0.25;
     }
     
-    // 3. 颜色一致性检测 - 水印颜色通常比较单一
     const colorVariance = Math.max(Math.abs(r - g), Math.abs(g - b), Math.abs(r - b));
     if (colorVariance < 20) {
       confidence += 0.2;
     }
     
-    // 4. 局部对比度检测
     const contrast = calculateLocalContrast(data, x, y, width, height);
     if (contrast > 60) {
       confidence += 0.3;
     }
     
-    // 5. 边缘特征检测
     const edgeStrength = calculateEdgeStrength(data, x, y, width, height);
     if (edgeStrength > 40) {
       confidence += 0.25;
     }
     
-    // 6. 文字模式检测
     if (detectTextPattern(data, x, y, width, height)) {
       confidence += 0.35;
     }
     
-    // 7. 位置权重 - 水印通常在特定位置
     const positionWeight = getPositionWeight(x, y, width, height);
     confidence *= positionWeight;
     
     return Math.min(confidence, 1.0);
   };
 
-  // 计算位置权重
   const getPositionWeight = (x: number, y: number, width: number, height: number): number => {
     const normalizedX = x / width;
     const normalizedY = y / height;
     
-    // 右下角权重最高
     if (normalizedX > 0.7 && normalizedY > 0.7) return 1.2;
-    // 四个角落
     if ((normalizedX < 0.3 || normalizedX > 0.7) && (normalizedY < 0.3 || normalizedY > 0.7)) return 1.1;
-    // 边缘区域
     if (normalizedX < 0.2 || normalizedX > 0.8 || normalizedY < 0.2 || normalizedY > 0.8) return 1.0;
-    // 中心区域权重较低
     return 0.8;
   };
 
-  // 文字模式检测
   const detectTextPattern = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number): boolean => {
     const patterns = [];
     const radius = 2;
     
-    // 检测水平和垂直线条
     for (let dx = -radius; dx <= radius; dx++) {
       for (let dy = -radius; dy <= radius; dy++) {
         const nx = x + dx;
@@ -182,7 +171,6 @@ const WatermarkRemover = () => {
       }
     }
     
-    // 检测是否有文字特征（规律的明暗变化）
     let edgeCount = 0;
     const centerBrightness = patterns[Math.floor(patterns.length / 2)];
     
@@ -197,7 +185,6 @@ const WatermarkRemover = () => {
     return edgeCount >= 3 && edgeCount <= patterns.length * 0.7;
   };
 
-  // 手动标记区域检测
   const isInMarkedWatermarkArea = (x: number, y: number, marks: WatermarkMark[]): boolean => {
     if (!marks || marks.length === 0) return false;
     
@@ -207,7 +194,6 @@ const WatermarkRemover = () => {
     });
   };
 
-  // 计算局部对比度
   const calculateLocalContrast = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number): number => {
     const centerIndex = (y * width + x) * 4;
     const centerBrightness = (data[centerIndex] + data[centerIndex + 1] + data[centerIndex + 2]) / 3;
@@ -231,7 +217,6 @@ const WatermarkRemover = () => {
     return maxDiff;
   };
 
-  // 计算边缘强度
   const calculateEdgeStrength = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number): number => {
     const sobelX = [-1, 0, 1, -2, 0, 2, -1, 0, 1];
     const sobelY = [-1, -2, -1, 0, 0, 0, 1, 2, 1];
@@ -256,12 +241,10 @@ const WatermarkRemover = () => {
     return Math.sqrt(gx * gx + gy * gy);
   };
 
-  // 增强像素修复算法
   const repairPixel = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number, confidence: number) => {
     const radius = Math.min(Math.max(3, Math.floor(confidence * 6)), 8);
     const validPixels: Array<{r: number, g: number, b: number, a: number, weight: number, distance: number}> = [];
     
-    // 收集有效的邻近像素
     for (let dy = -radius; dy <= radius; dy++) {
       for (let dx = -radius; dx <= radius; dx++) {
         if (dx === 0 && dy === 0) continue;
@@ -273,7 +256,6 @@ const WatermarkRemover = () => {
           const neighborIndex = (ny * width + nx) * 4;
           const neighborConfidence = detectWatermark(data, nx, ny, width, height);
           
-          // 只使用非水印像素
           if (neighborConfidence < 0.3) {
             const distance = Math.sqrt(dx * dx + dy * dy);
             const weight = 1 / (distance * distance + 0.1);
@@ -293,19 +275,15 @@ const WatermarkRemover = () => {
     
     if (validPixels.length === 0) return null;
     
-    // 根据算法类型选择修复策略
     let repairedPixel;
     
     if (processingAlgorithm === 'conservative') {
-      // 保守修复：使用最近的几个像素
       validPixels.sort((a, b) => a.distance - b.distance);
       const useCount = Math.min(4, validPixels.length);
       repairedPixel = weightedAverage(validPixels.slice(0, useCount));
     } else if (processingAlgorithm === 'aggressive') {
-      // 激进修复：使用所有有效像素
       repairedPixel = weightedAverage(validPixels);
     } else {
-      // 增强修复：智能选择像素
       validPixels.sort((a, b) => b.weight - a.weight);
       const useCount = Math.min(Math.max(6, Math.floor(validPixels.length * 0.6)), validPixels.length);
       repairedPixel = weightedAverage(validPixels.slice(0, useCount));
@@ -314,7 +292,6 @@ const WatermarkRemover = () => {
     return repairedPixel;
   };
 
-  // 加权平均计算
   const weightedAverage = (pixels: Array<{r: number, g: number, b: number, a: number, weight: number}>) => {
     let totalR = 0, totalG = 0, totalB = 0, totalA = 0, totalWeight = 0;
     
@@ -334,7 +311,7 @@ const WatermarkRemover = () => {
     };
   };
 
-  const processImageCanvas = async (imageFile: File, marks?: WatermarkMark[]): Promise<Blob> => {
+  const processImageCanvas = async (imageFile: File, marks?: WatermarkMark[], existingProcessedUrl?: string): Promise<Blob> => {
     return new Promise((resolve, reject) => {
       const img = new Image();
       img.onload = () => {
@@ -356,7 +333,6 @@ const WatermarkRemover = () => {
         let processedPixels = 0;
         const watermarkPixels: Array<{x: number, y: number, confidence: number}> = [];
         
-        // 第一遍：检测所有水印像素
         for (let y = 0; y < canvas.height; y++) {
           for (let x = 0; x < canvas.width; x++) {
             const normalizedX = x / canvas.width;
@@ -364,19 +340,16 @@ const WatermarkRemover = () => {
             
             let confidence = 0;
             
-            // 检查手动标记
             if (marks && marks.length > 0) {
               if (isInMarkedWatermarkArea(normalizedX, normalizedY, marks)) {
                 confidence = 0.9;
               }
             }
             
-            // 如果没有手动标记，使用算法检测
             if (confidence === 0) {
               confidence = detectWatermark(data, x, y, canvas.width, canvas.height);
             }
             
-            // 根据算法类型调整阈值
             let threshold = 0.4;
             if (processingAlgorithm === 'conservative') threshold = 0.6;
             else if (processingAlgorithm === 'aggressive') threshold = 0.3;
@@ -389,10 +362,8 @@ const WatermarkRemover = () => {
         
         console.log(`检测到 ${watermarkPixels.length} 个水印像素`);
         
-        // 按置信度排序
         watermarkPixels.sort((a, b) => b.confidence - a.confidence);
         
-        // 第二遍：修复水印像素
         watermarkPixels.forEach(({x, y, confidence}) => {
           const index = (y * canvas.width + x) * 4;
           const repaired = repairPixel(data, x, y, canvas.width, canvas.height, confidence);
@@ -420,18 +391,19 @@ const WatermarkRemover = () => {
       };
       
       img.onerror = () => reject(new Error('图片加载失败'));
-      img.src = URL.createObjectURL(imageFile);
+      // 如果存在已处理的图片，使用已处理的图片继续处理；否则使用原图
+      img.src = existingProcessedUrl || URL.createObjectURL(imageFile);
     });
   };
 
   const handleRemoveWatermark = async (imageItem: ImageItem) => {
     if (isProcessing) {
-      toast.error("请等待当前任务完成", { duration: 1000 });
+      toast.error("请等待当前任务完成", { duration: 800 });
       return;
     }
 
     if (!imageItem?.file) {
-      toast.error("请先上传图片", { duration: 1000 });
+      toast.error("请先上传图片", { duration: 800 });
       return;
     }
 
@@ -444,7 +416,12 @@ const WatermarkRemover = () => {
         setProgress(prev => Math.min(prev + 12, 85));
       }, 200);
 
-      const processedBlob = await processImageCanvas(imageItem.file, imageItem.watermarkMarks);
+      // 如果已有处理结果，使用处理结果继续处理；否则使用原图
+      const processedBlob = await processImageCanvas(
+        imageItem.file, 
+        imageItem.watermarkMarks,
+        imageItem.processedUrl || undefined
+      );
       
       clearInterval(progressInterval);
       setProgress(100);
@@ -452,14 +429,24 @@ const WatermarkRemover = () => {
       const processedUrl = URL.createObjectURL(processedBlob);
       setImages(prevImages =>
         prevImages.map(img =>
-          img.id === imageItem.id ? { ...img, processedUrl: processedUrl } : img
+          img.id === imageItem.id 
+            ? { 
+                ...img, 
+                processedUrl: processedUrl,
+                processCount: img.processCount + 1
+              } 
+            : img
         )
       );
       
-      toast.success("水印去除完成!", { duration: 1000 });
+      if (imageItem.processCount === 0) {
+        toast.success("水印去除完成!", { duration: 800 });
+      } else {
+        toast.success(`第${imageItem.processCount + 1}次处理完成!`, { duration: 800 });
+      }
     } catch (error: any) {
       console.error("Error removing watermark:", error);
-      toast.error(`水印去除失败: ${error.message}`, { duration: 1500 });
+      toast.error(`水印去除失败: ${error.message}`, { duration: 1200 });
     } finally {
       setIsProcessing(false);
       setProgress(0);
@@ -475,9 +462,9 @@ const WatermarkRemover = () => {
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      toast.success("图片已开始下载!", { duration: 1000 });
+      toast.success("图片已开始下载!", { duration: 800 });
     } else {
-      toast.error("请先去除水印", { duration: 1000 });
+      toast.error("请先去除水印", { duration: 800 });
     }
   };
 
@@ -494,6 +481,30 @@ const WatermarkRemover = () => {
       }
       return newImages;
     });
+  };
+
+  const handleOriginalZoomIn = () => {
+    setOriginalZoom(prev => Math.min(prev * 1.2, 5));
+  };
+
+  const handleOriginalZoomOut = () => {
+    setOriginalZoom(prev => Math.max(prev / 1.2, 0.1));
+  };
+
+  const handleProcessedZoomIn = () => {
+    setProcessedZoom(prev => Math.min(prev * 1.2, 5));
+  };
+
+  const handleProcessedZoomOut = () => {
+    setProcessedZoom(prev => Math.max(prev / 1.2, 0.1));
+  };
+
+  const resetOriginalZoom = () => {
+    setOriginalZoom(1);
+  };
+
+  const resetProcessedZoom = () => {
+    setProcessedZoom(1);
   };
 
   const renderWatermarkMarks = (marks: WatermarkMark[] = [], imageId: string) => {
@@ -591,7 +602,7 @@ const WatermarkRemover = () => {
                       {image.file.name}
                     </span>
                     <span className="text-xs text-gray-500">
-                      {image.processedUrl ? '已处理' : '未处理'}
+                      {image.processedUrl ? `已处理${image.processCount}次` : '未处理'}
                       {image.watermarkMarks && image.watermarkMarks.length > 0 && 
                         ` • ${image.watermarkMarks.length}个标记`
                       }
@@ -607,7 +618,7 @@ const WatermarkRemover = () => {
                     disabled={isProcessing}
                     className="ml-2 flex-shrink-0"
                   >
-                    {isProcessing && selectedImageId === image.id ? '处理中...' : '去水印'}
+                    {isProcessing && selectedImageId === image.id ? '处理中...' : (image.processCount > 0 ? '继续处理' : '去水印')}
                   </Button>
                 </div>
               ))}
@@ -657,7 +668,7 @@ const WatermarkRemover = () => {
                             className="text-xs"
                           >
                             <RefreshCw className="h-3 w-3 mr-1" />
-                            {isProcessing && selectedImageId === image.id ? '处理中...' : '重新处理'}
+                            {isProcessing && selectedImageId === image.id ? '处理中...' : (image.processCount > 0 ? '继续处理' : '去水印')}
                           </Button>
                           {image.processedUrl && (
                             <Button
@@ -685,32 +696,111 @@ const WatermarkRemover = () => {
                         <div className="space-y-2">
                           <div className="flex items-center justify-between">
                             <span className="text-sm font-medium text-gray-600">原图</span>
-                            {isMarkingMode && (
-                              <span className="text-xs text-gray-500">点击标记水印</span>
-                            )}
+                            <div className="flex items-center space-x-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={handleOriginalZoomOut}
+                                className="h-6 w-6 p-0"
+                              >
+                                <ZoomOut className="h-3 w-3" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={resetOriginalZoom}
+                                className="h-6 px-2 text-xs"
+                              >
+                                <RotateCcw className="h-3 w-3" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={handleOriginalZoomIn}
+                                className="h-6 w-6 p-0"
+                              >
+                                <ZoomIn className="h-3 w-3" />
+                              </Button>
+                              {isMarkingMode && (
+                                <span className="text-xs text-gray-500 ml-2">点击标记</span>
+                              )}
+                            </div>
                           </div>
                           <div className="relative bg-gray-50 rounded-lg overflow-hidden aspect-video">
-                            <img
-                              src={image.url}
-                              alt="原图"
-                              className="w-full h-full object-contain cursor-pointer"
-                              onClick={(e) => handleImageClick(e, image.id)}
-                            />
-                            {renderWatermarkMarks(image.watermarkMarks, image.id)}
+                            <ScrollArea className="w-full h-full">
+                              <div className="relative inline-block">
+                                <img
+                                  src={image.url}
+                                  alt="原图"
+                                  className="cursor-pointer block"
+                                  style={{
+                                    transform: `scale(${originalZoom})`,
+                                    transformOrigin: 'top left',
+                                    maxWidth: 'none',
+                                    minWidth: '100%',
+                                    minHeight: '100%',
+                                    objectFit: 'contain'
+                                  }}
+                                  onClick={(e) => handleImageClick(e, image.id)}
+                                />
+                                {renderWatermarkMarks(image.watermarkMarks, image.id)}
+                              </div>
+                            </ScrollArea>
                           </div>
                         </div>
                         
                         <div className="space-y-2">
                           <div className="flex items-center justify-between">
                             <span className="text-sm font-medium text-gray-600">处理后</span>
+                            <div className="flex items-center space-x-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={handleProcessedZoomOut}
+                                className="h-6 w-6 p-0"
+                                disabled={!image.processedUrl}
+                              >
+                                <ZoomOut className="h-3 w-3" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={resetProcessedZoom}
+                                className="h-6 px-2 text-xs"
+                                disabled={!image.processedUrl}
+                              >
+                                <RotateCcw className="h-3 w-3" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={handleProcessedZoomIn}
+                                className="h-6 w-6 p-0"
+                                disabled={!image.processedUrl}
+                              >
+                                <ZoomIn className="h-3 w-3" />
+                              </Button>
+                            </div>
                           </div>
                           <div className="relative bg-gray-50 rounded-lg overflow-hidden aspect-video">
                             {image.processedUrl ? (
-                              <img
-                                src={image.processedUrl}
-                                alt="处理后"
-                                className="w-full h-full object-contain"
-                              />
+                              <ScrollArea className="w-full h-full">
+                                <div className="relative inline-block">
+                                  <img
+                                    src={image.processedUrl}
+                                    alt="处理后"
+                                    className="block"
+                                    style={{
+                                      transform: `scale(${processedZoom})`,
+                                      transformOrigin: 'top left',
+                                      maxWidth: 'none',
+                                      minWidth: '100%',
+                                      minHeight: '100%',
+                                      objectFit: 'contain'
+                                    }}
+                                  />
+                                </div>
+                              </ScrollArea>
                             ) : (
                               <div className="w-full h-full flex items-center justify-center text-gray-400 text-sm">
                                 {isProcessing && selectedImageId === image.id ? (
