@@ -9,6 +9,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Upload, Download, Trash2, MapPin, RefreshCw, Settings, ZoomIn, ZoomOut, RotateCcw, Undo2, Sparkles, Info, Copy, Play } from 'lucide-react';
 import { toast } from 'sonner';
 import BatchDownloadDialog from './BatchDownloadDialog';
+import { processWithSDInpainting } from './SDInpaintingProcessor';
 
 interface ImageItem {
   id: string;
@@ -53,7 +54,7 @@ const WatermarkRemover = () => {
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isMarkingMode, setIsMarkingMode] = useState(false);
-  const [processingAlgorithm, setProcessingAlgorithm] = useState<'enhanced' | 'conservative' | 'aggressive' | 'lama'>('lama');
+  const [processingAlgorithm, setProcessingAlgorithm] = useState<'enhanced' | 'conservative' | 'aggressive' | 'lama' | 'sd-inpainting'>('lama');
   const [markRadius, setMarkRadius] = useState(0.05);
   const [zoom, setZoom] = useState<number>(1);
   const [scrollPosition, setScrollPosition] = useState({
@@ -764,89 +765,101 @@ const WatermarkRemover = () => {
     };
   };
   const processImageCanvas = async (imageFile: File, mark?: WatermarkMark, existingProcessedUrl?: string): Promise<Blob> => {
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      img.onload = async () => {
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          reject(new Error('无法获取Canvas上下文'));
+    return new Promise(async (resolve, reject) => {
+      try {
+        // Use SD Inpainting algorithm if selected
+        if (processingAlgorithm === 'sd-inpainting' && mark) {
+          console.log('使用Stable Diffusion Inpainting算法处理');
+          const processedBlob = await processWithSDInpainting(imageFile, mark);
+          resolve(processedBlob);
           return;
         }
-        canvas.width = img.width;
-        canvas.height = img.height;
-        ctx.drawImage(img, 0, 0);
-        try {
-          if (processingAlgorithm === 'lama' && mark) {
-            console.log('使用LaMa算法处理水印区域');
-            await applyLamaInpainting(canvas, mark);
-          } else {
-            // 传统算法处理
-            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            const data = imageData.data;
-            for (let pass = 0; pass < 3; pass++) {
-              let processedPixels = 0;
-              const watermarkPixels: Array<{
-                x: number;
-                y: number;
-                confidence: number;
-              }> = [];
-              for (let y = 0; y < canvas.height; y++) {
-                for (let x = 0; x < canvas.width; x++) {
-                  const normalizedX = x / canvas.width;
-                  const normalizedY = y / canvas.height;
-                  let confidence = 0;
-                  if (mark) {
-                    if (isInMarkedWatermarkArea(normalizedX, normalizedY, mark)) {
-                      confidence = 0.98;
-                    }
-                  } else {
-                    confidence = detectWatermark(data, x, y, canvas.width, canvas.height);
-                  }
-                  let threshold = 0.2;
-                  if (processingAlgorithm === 'conservative') threshold = 0.35;else if (processingAlgorithm === 'aggressive') threshold = 0.12;
-                  if (confidence > threshold) {
-                    watermarkPixels.push({
-                      x,
-                      y,
-                      confidence
-                    });
-                  }
-                }
-              }
-              watermarkPixels.forEach(({
-                x,
-                y,
-                confidence
-              }) => {
-                const repaired = repairPixel(data, x, y, canvas.width, canvas.height, confidence);
-                if (repaired) {
-                  const index = (y * canvas.width + x) * 4;
-                  const blendFactor = Math.min(0.98, confidence + 0.3);
-                  data[index] = Math.round(data[index] * (1 - blendFactor) + repaired.r * blendFactor);
-                  data[index + 1] = Math.round(data[index + 1] * (1 - blendFactor) + repaired.g * blendFactor);
-                  data[index + 2] = Math.round(data[index + 2] * (1 - blendFactor) + repaired.b * blendFactor);
-                  data[index + 3] = Math.round(data[index + 3] * (1 - blendFactor) + repaired.a * blendFactor);
-                  processedPixels++;
-                }
-              });
-              console.log(`Pass ${pass + 1}: 修复了 ${processedPixels} 个水印像素`);
-            }
-            ctx.putImageData(imageData, 0, 0);
+
+        const img = new Image();
+        img.onload = async () => {
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            reject(new Error('无法获取Canvas上下文'));
+            return;
           }
-          canvas.toBlob(blob => {
-            if (blob) {
-              resolve(blob);
+          canvas.width = img.width;
+          canvas.height = img.height;
+          ctx.drawImage(img, 0, 0);
+          try {
+            if (processingAlgorithm === 'lama' && mark) {
+              console.log('使用LaMa算法处理水印区域');
+              await applyLamaInpainting(canvas, mark);
             } else {
-              reject(new Error('无法生成处理后的图片'));
+              // 传统算法处理
+              const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+              const data = imageData.data;
+              for (let pass = 0; pass < 3; pass++) {
+                let processedPixels = 0;
+                const watermarkPixels: Array<{
+                  x: number;
+                  y: number;
+                  confidence: number;
+                }> = [];
+                for (let y = 0; y < canvas.height; y++) {
+                  for (let x = 0; x < canvas.width; x++) {
+                    const normalizedX = x / canvas.width;
+                    const normalizedY = y / canvas.height;
+                    let confidence = 0;
+                    if (mark) {
+                      if (isInMarkedWatermarkArea(normalizedX, normalizedY, mark)) {
+                        confidence = 0.98;
+                      }
+                    } else {
+                      confidence = detectWatermark(data, x, y, canvas.width, canvas.height);
+                    }
+                    let threshold = 0.2;
+                    if (processingAlgorithm === 'conservative') threshold = 0.35;else if (processingAlgorithm === 'aggressive') threshold = 0.12;
+                    if (confidence > threshold) {
+                      watermarkPixels.push({
+                        x,
+                        y,
+                        confidence
+                      });
+                    }
+                  }
+                }
+                watermarkPixels.forEach(({
+                  x,
+                  y,
+                  confidence
+                }) => {
+                  const repaired = repairPixel(data, x, y, canvas.width, canvas.height, confidence);
+                  if (repaired) {
+                    const index = (y * canvas.width + x) * 4;
+                    const blendFactor = Math.min(0.98, confidence + 0.3);
+                    data[index] = Math.round(data[index] * (1 - blendFactor) + repaired.r * blendFactor);
+                    data[index + 1] = Math.round(data[index + 1] * (1 - blendFactor) + repaired.g * blendFactor);
+                    data[index + 2] = Math.round(data[index + 2] * (1 - blendFactor) + repaired.b * blendFactor);
+                    data[index + 3] = Math.round(data[index + 3] * (1 - blendFactor) + repaired.a * blendFactor);
+                    processedPixels++;
+                  }
+                });
+                console.log(`Pass ${pass + 1}: 修复了 ${processedPixels} 个水印像素`);
+              }
+              ctx.putImageData(imageData, 0, 0);
             }
-          }, 'image/png', 1.0);
-        } catch (error) {
-          reject(error);
-        }
-      };
-      img.onerror = () => reject(new Error('图片加载失败'));
-      img.src = existingProcessedUrl || URL.createObjectURL(imageFile);
+            canvas.toBlob(blob => {
+              if (blob) {
+                resolve(blob);
+              } else {
+                reject(new Error('无法生成处理后的图片'));
+              }
+            }, 'image/png', 1.0);
+          } catch (error) {
+            reject(error);
+          }
+        };
+        img.onerror = () => reject(new Error('图片加载失败'));
+        img.src = existingProcessedUrl || URL.createObjectURL(imageFile);
+      } catch (error) {
+        reject(error);
+      }
     });
   };
 
@@ -1251,6 +1264,7 @@ const WatermarkRemover = () => {
                 maxWidth: '120px'
               }}>
                   <option value="lama">LaMa算法</option>
+                  <option value="sd-inpainting">AI智能填充</option>
                   <option value="enhanced">增强模式</option>
                   <option value="conservative">保守模式</option>
                   <option value="aggressive">激进模式</option>
@@ -1268,6 +1282,16 @@ const WatermarkRemover = () => {
                         <p className="text-xs text-gray-600 mb-3">不同算法的特点和适用场景</p>
                       </div>
                       <div className="space-y-3">
+                        <div>
+                          <h4 className="font-medium text-purple-600 mb-1 text-xs">AI智能填充 (最新)</h4>
+                          <ul className="text-xs space-y-1 text-gray-700">
+                            <li>• 🧠 基于Stable Diffusion技术</li>
+                            <li>• 🎨 智能理解图像语义内容</li>
+                            <li>• ✨ 重新生成符合逻辑的细节</li>
+                            <li>• 🔍 高清纹理修复和填充</li>
+                            <li>• 🚀 适合复杂背景和精细修复</li>
+                          </ul>
+                        </div>
                         <div>
                           <h4 className="font-medium text-blue-600 mb-1 text-xs">LaMa算法 (推荐)</h4>
                           <ul className="text-xs space-y-1 text-gray-700">
