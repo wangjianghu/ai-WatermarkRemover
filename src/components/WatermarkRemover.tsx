@@ -1452,7 +1452,7 @@ const WatermarkRemover = () => {
                       </div>
                     </PopoverContent>
                   </Popover>
-                  {/* API 配置按钮 - 仅在选择AI智能填充时显示 */}
+                  {/* API Configuration button - only show when AI smart fill is selected */}
                   {processingAlgorithm === 'sd-inpainting' && (
                     <Dialog open={isApiConfigOpen} onOpenChange={setIsApiConfigOpen}>
                       <DialogTrigger asChild>
@@ -1505,7 +1505,7 @@ const WatermarkRemover = () => {
               </div>
             </div>
             
-            {/* 图片列表 */}
+            {/* Image List */}
             <ScrollArea className="flex-1 pt-3">
               <div className="space-y-2">
                 {images.map(image => (
@@ -1618,16 +1618,19 @@ const WatermarkRemover = () => {
             </div>
           </div>
           
-          {selectedImage ? <div className="flex-1 grid grid-cols-2 gap-4 p-4 min-h-0 overflow-hidden">
+          {selectedImage ? (
+            <div className="flex-1 grid grid-cols-2 gap-4 p-4 min-h-0 overflow-hidden">
               {/* Original Image */}
               <div className="flex flex-col min-h-0">
                 <div className="flex items-center justify-between mb-2 flex-shrink-0">
                   <div className="flex items-center space-x-4">
                     <span className="text-sm font-medium text-gray-600">原图</span>
-                    {isProcessing && <div className="flex items-center space-x-2">
+                    {isProcessing && (
+                      <div className="flex items-center space-x-2">
                         <Progress value={progress} className="w-20 h-2" />
                         <span className="text-xs text-gray-500">{progress}%</span>
-                      </div>}
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-center space-x-1">
                     <Button variant="ghost" size="sm" onClick={handleZoomOut} className="h-6 w-6 p-0">
@@ -1651,7 +1654,15 @@ const WatermarkRemover = () => {
                       transform: `scale(${zoom})`,
                       transformOrigin: 'center center'
                     }}>
-                      <img src={selectedImage.url} alt="原图" className={`block object-contain transition-transform duration-200 ease-out ${isMarkingMode ? 'cursor-crosshair' : ''}`} onMouseDown={e => handleMouseDown(e, selectedImage.id)} onMouseMove={e => handleMouseMove(e, selectedImage.id)} onMouseUp={e => handleMouseUp(e, selectedImage.id)} draggable={false} />
+                      <img 
+                        src={selectedImage.url} 
+                        alt="原图" 
+                        className={`block object-contain transition-transform duration-200 ease-out ${isMarkingMode ? 'cursor-crosshair' : ''}`} 
+                        onMouseDown={e => handleMouseDown(e, selectedImage.id)} 
+                        onMouseMove={e => handleMouseMove(e, selectedImage.id)} 
+                        onMouseUp={e => handleMouseUp(e, selectedImage.id)} 
+                        draggable={false} 
+                      />
                       {renderWatermarkMark(selectedImage.watermarkMark, true)}
                       {renderDragPreview()}
                     </div>
@@ -1680,28 +1691,38 @@ const WatermarkRemover = () => {
                   const target = e.target as HTMLDivElement;
                   syncScroll('processed', target.scrollLeft, target.scrollTop);
                 }}>
-                  {selectedImage.processedUrl ? <div className="p-4 flex items-center justify-center min-h-full">
+                  {selectedImage.processedUrl ? (
+                    <div className="p-4 flex items-center justify-center min-h-full">
                       <div className="relative" style={{
                         transform: `scale(${zoom})`,
                         transformOrigin: 'center center'
                       }}>
                         <img src={selectedImage.processedUrl} alt="处理后" className="block object-contain" draggable={false} />
                       </div>
-                    </div> : <div className="absolute inset-0 flex items-center justify-center text-gray-400 text-sm">
-                      {isProcessing ? <div className="text-center">
+                    </div>
+                  ) : (
+                    <div className="absolute inset-0 flex items-center justify-center text-gray-400 text-sm">
+                      {isProcessing ? (
+                        <div className="text-center">
                           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-2"></div>
                           <div className="text-xs">正在处理...</div>
-                        </div> : '等待处理'}
-                    </div>}
+                        </div>
+                      ) : (
+                        '等待处理'
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
-            </div> : <div className="flex-1 flex items-center justify-center text-gray-500">
+            </div>
+          ) : (
+            <div className="flex-1 flex items-center justify-center text-gray-500">
               <div className="text-center">
                 <p className="text-lg mb-2">请从左侧列表中选择一张图片进行处理</p>
                 <p className="text-sm text-gray-400">上传后将在此处看到图片对比</p>
               </div>
             </div>
-          </div>
+          )}
           
           {/* Batch Download Dialog */}
           <BatchDownloadDialog
