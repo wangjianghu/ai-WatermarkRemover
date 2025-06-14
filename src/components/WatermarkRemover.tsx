@@ -178,7 +178,7 @@ const WatermarkRemover = () => {
     event.preventDefault();
   }, [isMarkingMode, images]);
 
-  const getResizeHandle = (x: number, y: number, mark: WatermarkMark): string | null => {
+  const getResizeHandle = (x: number, y: number, mark: WatermarkMark): 'nw' | 'ne' | 'sw' | 'se' | 'n' | 'e' | 's' | 'w' | null => {
     const handleSize = 0.02; // 2% of image size
     const handles = {
       'nw': { x: mark.x, y: mark.y },
@@ -189,11 +189,11 @@ const WatermarkRemover = () => {
       'e': { x: mark.x + mark.width, y: mark.y + mark.height / 2 },
       's': { x: mark.x + mark.width / 2, y: mark.y + mark.height },
       'w': { x: mark.x, y: mark.y + mark.height / 2 }
-    };
+    } as const;
 
     for (const [handle, pos] of Object.entries(handles)) {
       if (Math.abs(x - pos.x) < handleSize && Math.abs(y - pos.y) < handleSize) {
-        return handle;
+        return handle as 'nw' | 'ne' | 'sw' | 'se' | 'n' | 'e' | 's' | 'w';
       }
     }
     return null;
@@ -431,6 +431,8 @@ const WatermarkRemover = () => {
     
     for (let dy = -radius; dy <= radius; dy++) {
       for (let dx = -radius; dx <= radius; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        
         const nx = x + dx;
         const ny = y + dy;
         
