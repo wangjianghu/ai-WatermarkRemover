@@ -442,22 +442,24 @@ const WatermarkRemover = () => {
   };
 
   return (
-    <div className="max-w-7xl mx-auto p-6 space-y-6">
+    <div className="h-full flex flex-col">
       {progress > 0 && (
-        <Card>
-          <CardContent className="p-6">
-            <div className="w-full">
-              <Progress value={progress} />
-              <p className="text-center mt-2 text-sm text-gray-600">处理进度: {progress}%</p>
-            </div>
-          </CardContent>
-        </Card>
+        <div className="flex-shrink-0 px-6 pt-6">
+          <Card>
+            <CardContent className="p-6">
+              <div className="w-full">
+                <Progress value={progress} />
+                <p className="text-center mt-2 text-sm text-gray-600">处理进度: {progress}%</p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       )}
       
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        <Card>
-          <CardContent className="space-y-4 p-4">
-            <div className="flex items-center justify-between">
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-4 gap-6 p-6 min-h-0">
+        <Card className="flex flex-col">
+          <CardContent className="flex flex-col h-full p-4">
+            <div className="flex items-center justify-between mb-4 flex-shrink-0">
               <h2 className="text-lg font-semibold">图片列表</h2>
               <div>
                 <input
@@ -476,11 +478,11 @@ const WatermarkRemover = () => {
                 </Button>
               </div>
             </div>
-            <div className="flex flex-col space-y-2">
+            <div className="flex flex-col space-y-2 flex-1 overflow-y-auto">
               {images.map(image => (
                 <div
                   key={image.id}
-                  className={`flex items-center justify-between p-3 border rounded-md cursor-pointer transition-colors ${
+                  className={`flex items-center justify-between p-3 border rounded-md cursor-pointer transition-colors flex-shrink-0 ${
                     selectedImageId === image.id ? 'bg-blue-50 border-blue-200' : 'hover:bg-gray-50'
                   }`}
                   onClick={() => handleImageClick(image.id)}
@@ -501,7 +503,7 @@ const WatermarkRemover = () => {
                       handleRemoveWatermark(image);
                     }}
                     disabled={isProcessing}
-                    className="ml-2"
+                    className="ml-2 flex-shrink-0"
                   >
                     {isProcessing && selectedImageId === image.id ? '处理中...' : '去水印'}
                   </Button>
@@ -511,9 +513,9 @@ const WatermarkRemover = () => {
           </CardContent>
         </Card>
 
-        <Card className="lg:col-span-3">
-          <CardContent className="space-y-4 p-4">
-            <div className="flex items-center justify-between">
+        <Card className="lg:col-span-3 flex flex-col">
+          <CardContent className="flex flex-col h-full p-4">
+            <div className="flex items-center justify-between mb-4 flex-shrink-0">
               <h2 className="text-lg font-semibold whitespace-nowrap">图片对比</h2>
               {selectedImage && (
                 <div className="flex items-center justify-between w-full ml-8">
@@ -534,7 +536,7 @@ const WatermarkRemover = () => {
                   {selectedImage.processedUrl && (
                     <Button 
                       onClick={() => handleDownload(selectedImage)}
-                      className="flex items-center space-x-2"
+                      className="flex items-center space-x-2 flex-shrink-0"
                     >
                       <Download className="h-4 w-4" />
                       <span>下载处理后的图片</span>
@@ -545,16 +547,12 @@ const WatermarkRemover = () => {
             </div>
             
             {selectedImage ? (
-              <div className="w-full">
-                <div className="grid grid-cols-2 gap-6">
-                  <div className="flex flex-col items-center space-y-3">
-                    <h3 className="text-md font-semibold">原始图片</h3>
+              <div className="flex-1 min-h-0">
+                <div className="grid grid-cols-2 gap-6 h-full">
+                  <div className="flex flex-col space-y-3 min-h-0">
+                    <h3 className="text-md font-semibold text-center flex-shrink-0">原始图片</h3>
                     <div 
-                      className="border-2 border-gray-200 rounded-lg bg-gray-50 overflow-auto"
-                      style={{
-                        width: '100%',
-                        height: '400px'
-                      }}
+                      className="border-2 border-gray-200 rounded-lg bg-gray-50 overflow-auto flex-1"
                     >
                       <div className="flex items-center justify-center min-h-full">
                         <img
@@ -570,14 +568,10 @@ const WatermarkRemover = () => {
                     </div>
                   </div>
 
-                  <div className="flex flex-col items-center space-y-3">
-                    <h3 className="text-md font-semibold">处理结果</h3>
+                  <div className="flex flex-col space-y-3 min-h-0">
+                    <h3 className="text-md font-semibold text-center flex-shrink-0">处理结果</h3>
                     <div 
-                      className="border-2 border-gray-200 rounded-lg bg-gray-50 overflow-auto"
-                      style={{
-                        width: '100%',
-                        height: '400px'
-                      }}
+                      className="border-2 border-gray-200 rounded-lg bg-gray-50 overflow-auto flex-1"
                     >
                       {selectedImage.processedUrl ? (
                         <div className="flex items-center justify-center min-h-full">
@@ -608,7 +602,7 @@ const WatermarkRemover = () => {
                 </div>
               </div>
             ) : (
-              <div className="flex items-center justify-center h-64 text-gray-500 border-2 border-dashed border-gray-200 rounded-lg">
+              <div className="flex items-center justify-center flex-1 text-gray-500 border-2 border-dashed border-gray-200 rounded-lg">
                 <div className="text-center">
                   <p className="text-lg mb-2">请上传并选择一张图片</p>
                   <p className="text-sm text-gray-400">从左侧列表选择图片进行查看和处理</p>
