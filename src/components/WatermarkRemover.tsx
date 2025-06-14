@@ -921,7 +921,7 @@ const WatermarkRemover = () => {
           console.error(`处理图片 ${imageItem.file.name} 失败:`, error);
           setBatchProgress(prev => ({
             ...prev,
-            [imageItem.id]: -1 // Mark as failed
+            [imageItem.id]: -1 // 标记为失败
           }));
         }
       }
@@ -1148,6 +1148,67 @@ const WatermarkRemover = () => {
       toast.error("请先去除水印", {
         duration: 800
       });
+    }
+  };
+
+  const handleRemoveWatermark = async (imageItem: ImageItem) => {
+    if (!imageItem.watermarkMark) {
+      toast.error("请先标记水印位置", {
+        duration: 1000
+      });
+      return;
+    }
+
+    if (isProcessing || isBatchProcessing) {
+      toast.error("请等待当前任务完成", {
+        duration: 800
+      });
+      return;
+    }
+
+    setIsProcessing(true);
+    setProgress(0);
+
+    try {
+      toast.info("开始处理图片...", {
+        duration: 800
+      });
+
+      // 模拟进度更新
+      const progressInterval = setInterval(() => {
+        setProgress(prev => Math.min(prev + 5, 90));
+      }, 100);
+
+      const processedBlob = await processImageCanvas(
+        imageItem.file,
+        imageItem.watermarkMark,
+        imageItem.processedUrl || undefined
+      );
+
+      clearInterval(progressInterval);
+      setProgress(100);
+
+      const processedUrl = URL.createObjectURL(processedBlob);
+      setImages(prevImages => prevImages.map(img => 
+        img.id === imageItem.id ? {
+          ...img,
+          processedUrl: processedUrl,
+          processCount: img.processCount + 1
+        } : img
+      ));
+
+      toast.success(`图片处理完成！${imageItem.processCount > 0 ? '继续优化' : '水印已去除'}`, {
+        duration: 1500
+      });
+
+    } catch (error: any) {
+      console.error("处理图片时出错:", error);
+      toast.error(`处理失败: ${error.message}`, {
+        duration: 1500
+      });
+    } finally {
+      setIsProcessing(false);
+      setProgress(0);
     }
   };
 
