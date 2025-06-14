@@ -1285,15 +1285,13 @@ const WatermarkRemover = () => {
         disabled={isDisabled}
         className={`text-xs ${isDisabled ? 'cursor-not-allowed' : ''}`}
       >
-        {isDisabled && (needsMarking || needsCompletion) && <Ban className="h-3 w-3 mr-1" />}
         {(isProcessing || isBatchProcessing) && selectedImageId === imageItem.id ? '处理中...' : 
-         needsMarking ? '需标记' :
-         needsCompletion ? '需完成标记' :
          imageItem.processCount > 0 ? '继续处理' : '去水印'}
       </Button>
     );
 
-    if (tooltipText && isDisabled) {
+    // 只在需要标记或需要完成标记时显示提示
+    if (tooltipText && (needsMarking || needsCompletion)) {
       return (
         <TooltipProvider>
           <Tooltip>
