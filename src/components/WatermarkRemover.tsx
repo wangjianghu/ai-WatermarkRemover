@@ -6,7 +6,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Slider } from '@/components/ui/slider';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Upload, Download, Trash2, MapPin, RefreshCw, Settings, ZoomIn, ZoomOut, RotateCcw, Undo2, Sparkles, Info, Copy } from 'lucide-react';
+import { Upload, Download, Trash2, MapPin, RefreshCw, Settings, ZoomIn, ZoomOut, RotateCcw, Undo2, Sparkles, Info } from 'lucide-react';
 import { toast } from 'sonner';
 import BatchDownloadDialog from './BatchDownloadDialog';
 
@@ -47,7 +47,6 @@ interface ResizeState {
   startX: number;
   startY: number;
 }
-
 const WatermarkRemover = () => {
   const [images, setImages] = useState<ImageItem[]>([]);
   const [progress, setProgress] = useState<number>(0);
@@ -848,7 +847,6 @@ const WatermarkRemover = () => {
       img.src = existingProcessedUrl || URL.createObjectURL(imageFile);
     });
   };
-
   const handleRemoveWatermark = async (imageItem: ImageItem) => {
     if (isProcessing) {
       toast.error("请等待当前任务完成", {
@@ -856,22 +854,12 @@ const WatermarkRemover = () => {
       });
       return;
     }
-    
-    // 检查是否在标记模式下且未完成标记
-    if (isMarkingMode && !imageItem.watermarkMark) {
-      toast.error("请先完成标记", {
-        duration: 800
-      });
-      return;
-    }
-    
     if (!imageItem?.file) {
       toast.error("请先上传图片", {
         duration: 800
       });
       return;
     }
-    
     setIsProcessing(true);
     setProgress(0);
     try {
@@ -1073,69 +1061,6 @@ const WatermarkRemover = () => {
     }} />;
   };
 
-  const applyWatermarkToAllImages = () => {
-    if (!selectedImage?.watermarkMark) {
-      toast.error("请先标记水印位置", { duration: 800 });
-      return;
-    }
-
-    const selectedImageData = images.find(img => img.id === selectedImageId);
-    if (!selectedImageData?.dimensions || !selectedImageData.watermarkMark) {
-      toast.error("无法获取当前图片信息", { duration: 800 });
-      return;
-    }
-
-    // 计算当前标记相对于右下角的绝对位置
-    const currentDimensions = selectedImageData.dimensions;
-    const currentMark = selectedImageData.watermarkMark;
-    
-    // 转换为像素坐标
-    const markPixelX = currentMark.x * currentDimensions.width;
-    const markPixelY = currentMark.y * currentDimensions.height;
-    const markPixelWidth = currentMark.width * currentDimensions.width;
-    const markPixelHeight = currentMark.height * currentDimensions.height;
-    
-    // 计算距离右下角的绝对位置
-    const offsetFromRight = currentDimensions.width - (markPixelX + markPixelWidth);
-    const offsetFromBottom = currentDimensions.height - (markPixelY + markPixelHeight);
-
-    let appliedCount = 0;
-    
-    setImages(prevImages => prevImages.map(img => {
-      if (img.id === selectedImageId || !img.dimensions) {
-        return img; // 跳过当前图片和没有尺寸信息的图片
-      }
-
-      // 根据目标图片尺寸计算新的标记位置
-      const targetWidth = img.dimensions.width;
-      const targetHeight = img.dimensions.height;
-      
-      // 计算新的像素位置
-      const newMarkPixelX = targetWidth - offsetFromRight - markPixelWidth;
-      const newMarkPixelY = targetHeight - offsetFromBottom - markPixelHeight;
-      
-      // 确保标记位置在图片范围内
-      const clampedX = Math.max(0, Math.min(newMarkPixelX, targetWidth - markPixelWidth));
-      const clampedY = Math.max(0, Math.min(newMarkPixelY, targetHeight - markPixelHeight));
-      
-      // 转换回相对坐标
-      const newMark = {
-        x: clampedX / targetWidth,
-        y: clampedY / targetHeight,
-        width: markPixelWidth / targetWidth,
-        height: markPixelHeight / targetWidth
-      };
-
-      appliedCount++;
-      return {
-        ...img,
-        watermarkMark: newMark
-      };
-    }));
-
-    toast.success(`已将水印标记应用到 ${appliedCount} 张图片`, { duration: 1000 });
-  };
-
   const selectedImage = images.find(img => img.id === selectedImageId);
   return <div className="h-full flex">
       {/* Left Sidebar */}
@@ -1255,14 +1180,10 @@ const WatermarkRemover = () => {
             setSelectedMark(false);
           }} className="text-xs">
                 <MapPin className="h-3 w-3 mr-1" />
-                {isMarkingMode ? '完成标记' : '标记水印'}
+                {isMarkingMode ? '退出标记' : '标记水印'}
               </Button>
               {selectedImage.watermarkMark && <Button variant="outline" size="sm" onClick={() => clearWatermarkMark(selectedImage.id)} className="text-xs">
                   清除标记
-                </Button>}
-              {selectedImage.watermarkMark && <Button variant="outline" size="sm" onClick={applyWatermarkToAllImages} className="text-xs">
-                  <Copy className="h-3 w-3 mr-1" />
-                  批量应用标记
                 </Button>}
               {selectedImage.processedUrl && <Button variant="outline" size="sm" onClick={() => restoreToOriginal(selectedImage.id)} className="text-xs">
                   <Undo2 className="h-3 w-3 mr-1" />
@@ -1283,403 +1204,89 @@ const WatermarkRemover = () => {
             </div>}
         </div>
         
-        {/* 图片显示区域 */}
-        {selectedImage ? (
-          <div className="flex-1 flex">
-            {/* 原图 */}
-            <div className="flex-1 border-r">
-              <div className="h-full flex flex-col">
-                <div className="flex items-center justify-between px-4 py-2 bg-white border-b">
-                  <h3 className="text-sm font-medium">原图</h3>
-                  <div className="flex items-center space-x-2">
-                    <Button variant="outline" size="sm" onClick={() => setZoom(prev => Math.max(prev / 1.2, 0.1))}>
-                      <ZoomOut className="h-3 w-3" />
-                    </Button>
-                    <span className="text-xs">{Math.round(zoom * 100)}%</span>
-                    <Button variant="outline" size="sm" onClick={() => setZoom(prev => Math.min(prev * 1.2, 5))}>
-                      <ZoomIn className="h-3 w-3" />
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={() => setZoom(1)}>
-                      <RotateCcw className="h-3 w-3" />
-                    </Button>
-                  </div>
+        {selectedImage ? <div className="flex-1 grid grid-cols-2 gap-4 p-4 min-h-0 overflow-hidden">
+            {/* Original Image */}
+            <div className="flex flex-col min-h-0">
+              <div className="flex items-center justify-between mb-2 flex-shrink-0">
+                <div className="flex items-center space-x-4">
+                  <span className="text-sm font-medium text-gray-600">原图</span>
+                  {isProcessing && <div className="flex items-center space-x-2">
+                      <Progress value={progress} className="w-20 h-2" />
+                      <span className="text-xs text-gray-500">{progress}%</span>
+                    </div>}
                 </div>
-                <div 
-                  ref={originalScrollRef}
-                  className="flex-1 overflow-auto bg-gray-100"
-                  onScroll={(e) => {
-                    const target = e.target as HTMLDivElement;
-                    syncScroll('original', target.scrollLeft, target.scrollTop);
-                  }}
-                >
-                  <div className="flex items-center justify-center min-h-full p-4">
-                    <div className="relative" style={{ transform: `scale(${zoom})` }}>
-                      <img
-                        src={selectedImage.url}
-                        alt="原图"
-                        className="max-w-none"
-                        style={{ cursor: isMarkingMode ? 'crosshair' : 'default' }}
-                      />
-                    </div>
+                <div className="flex items-center space-x-1">
+                  <Button variant="ghost" size="sm" onClick={handleZoomOut} className="h-6 w-6 p-0">
+                    <ZoomOut className="h-3 w-3" />
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={resetZoom} className="h-6 px-2 text-xs">
+                    <RotateCcw className="h-3 w-3" />
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={handleZoomIn} className="h-6 w-6 p-0">
+                    <ZoomIn className="h-3 w-3" />
+                  </Button>
+                  <span className="text-xs text-gray-500 ml-2">{Math.round(zoom * 100)}%</span>
+                </div>
+              </div>
+              <div ref={originalScrollRef} className="flex-1 relative bg-white rounded-lg border overflow-auto min-h-0" onScroll={e => {
+            const target = e.target as HTMLDivElement;
+            syncScroll('original', target.scrollLeft, target.scrollTop);
+          }}>
+                <div className="p-4 flex items-center justify-center min-h-full">
+                  <div className="relative" style={{
+                    transform: `scale(${zoom})`,
+                    transformOrigin: 'center center'
+                  }}>
+                    <img src={selectedImage.url} alt="原图" className={`block object-contain transition-transform duration-200 ease-out ${isMarkingMode ? 'cursor-crosshair' : ''}`} onMouseDown={e => handleMouseDown(e, selectedImage.id)} onMouseMove={e => handleMouseMove(e, selectedImage.id)} onMouseUp={e => handleMouseUp(e, selectedImage.id)} draggable={false} />
+                    {renderWatermarkMark(selectedImage.watermarkMark, true)}
+                    {renderDragPreview()}
                   </div>
                 </div>
               </div>
             </div>
-
-            {/* 处理后图片 */}
-            <div className="flex-1">
-              <div className="h-full flex flex-col">
-                <div className="flex items-center justify-between px-4 py-2 bg-white border-b">
-                  <h3 className="text-sm font-medium">
-                    {selectedImage.processedUrl ? `处理后 (第${selectedImage.processCount}次)` : '处理后'}
-                  </h3>
-                  {isProcessing && (
-                    <div className="flex items-center space-x-2">
-                      <Progress value={progress} className="w-20" />
-                      <span className="text-xs">{progress}%</span>
-                    </div>
-                  )}
-                </div>
-                <div 
-                  ref={processedScrollRef}
-                  className="flex-1 overflow-auto bg-gray-100"
-                  onScroll={(e) => {
-                    const target = e.target as HTMLDivElement;
-                    syncScroll('processed', target.scrollLeft, target.scrollTop);
-                  }}
-                >
-                  <div className="flex items-center justify-center min-h-full p-4">
-                    {selectedImage.processedUrl ? (
-                      <div className="relative" style={{ transform: `scale(${zoom})` }}>
-                        <img
-                          src={selectedImage.processedUrl}
-                          alt="处理后"
-                          className="max-w-none"
-                          style={{ cursor: isMarkingMode ? 'crosshair' : 'default' }}
-                          onMouseDown={(e) => {
-                            if (!isMarkingMode) return;
-                            e.preventDefault();
-                            e.stopPropagation();
-                            
-                            const {x, y} = getImageCoordinates(e);
-                            
-                            if (selectedImage.watermarkMark) {
-                              const mark = selectedImage.watermarkMark;
-                              const handleSize = Math.max(0.01, 0.02 / zoom);
-                              
-                              // 检查是否点击了调整大小的控制点
-                              const handles = {
-                                'nw': { x: mark.x, y: mark.y },
-                                'ne': { x: mark.x + mark.width, y: mark.y },
-                                'sw': { x: mark.x, y: mark.y + mark.height },
-                                'se': { x: mark.x + mark.width, y: mark.y + mark.height },
-                                'n': { x: mark.x + mark.width / 2, y: mark.y },
-                                'e': { x: mark.x + mark.width, y: mark.y + mark.height / 2 },
-                                's': { x: mark.x + mark.width / 2, y: mark.y + mark.height },
-                                'w': { x: mark.x, y: mark.y + mark.height / 2 }
-                              } as const;
-                              
-                              let foundHandle = null;
-                              for (const [handle, pos] of Object.entries(handles)) {
-                                if (Math.abs(x - pos.x) < handleSize && Math.abs(y - pos.y) < handleSize) {
-                                  foundHandle = handle as 'nw' | 'ne' | 'sw' | 'se' | 'n' | 'e' | 's' | 'w';
-                                  break;
-                                }
-                              }
-                              
-                              if (foundHandle) {
-                                setResizeState({
-                                  isResizing: true,
-                                  resizeHandle: foundHandle,
-                                  startX: x,
-                                  startY: y
-                                });
-                                setSelectedMark(true);
-                                return;
-                              }
-                              
-                              // 检查是否点击在矩形内部
-                              if (x >= mark.x && x <= mark.x + mark.width && y >= mark.y && y <= mark.y + mark.height) {
-                                setSelectedMark(true);
-                                setDragState({
-                                  isDragging: true,
-                                  startX: x - mark.x,
-                                  startY: y - mark.y,
-                                  currentX: x,
-                                  currentY: y
-                                });
-                                return;
-                              }
-                            }
-                            
-                            // 开始新的标记
-                            setSelectedMark(false);
-                            setImages(prevImages => prevImages.map(img => 
-                              img.id === selectedImage.id ? { ...img, watermarkMark: undefined } : img
-                            ));
-                            setDragState({
-                              isDragging: true,
-                              startX: x,
-                              startY: y,
-                              currentX: x,
-                              currentY: y
-                            });
-                          }}
-                          onMouseMove={(e) => {
-                            if (!isMarkingMode) return;
-                            
-                            const {x, y} = getImageCoordinates(e);
-                            
-                            // 更新光标样式
-                            if (!dragState.isDragging && !resizeState.isResizing) {
-                              if (selectedImage?.watermarkMark) {
-                                const mark = selectedImage.watermarkMark;
-                                const handleSize = Math.max(0.01, 0.02 / zoom);
-                                
-                                // 检查是否在控制点上
-                                const handles = {
-                                  'nw': { x: mark.x, y: mark.y, cursor: 'nw-resize' },
-                                  'ne': { x: mark.x + mark.width, y: mark.y, cursor: 'ne-resize' },
-                                  'sw': { x: mark.x, y: mark.y + mark.height, cursor: 'sw-resize' },
-                                  'se': { x: mark.x + mark.width, y: mark.y + mark.height, cursor: 'se-resize' },
-                                  'n': { x: mark.x + mark.width / 2, y: mark.y, cursor: 'ns-resize' },
-                                  's': { x: mark.x + mark.width / 2, y: mark.y + mark.height, cursor: 'ns-resize' },
-                                  'e': { x: mark.x + mark.width, y: mark.y + mark.height / 2, cursor: 'ew-resize' },
-                                  'w': { x: mark.x, y: mark.y + mark.height / 2, cursor: 'ew-resize' }
-                                };
-                                
-                                let onHandle = false;
-                                for (const handle of Object.values(handles)) {
-                                  if (Math.abs(x - handle.x) < handleSize && Math.abs(y - handle.y) < handleSize) {
-                                    e.currentTarget.style.cursor = handle.cursor;
-                                    onHandle = true;
-                                    break;
-                                  }
-                                }
-                                
-                                if (!onHandle) {
-                                  if (x >= mark.x && x <= mark.x + mark.width && y >= mark.y && y <= mark.y + mark.height) {
-                                    e.currentTarget.style.cursor = 'move';
-                                  } else {
-                                    e.currentTarget.style.cursor = 'crosshair';
-                                  }
-                                }
-                              } else {
-                                e.currentTarget.style.cursor = 'crosshair';
-                              }
-                              return;
-                            }
-                            
-                            e.preventDefault();
-                            e.stopPropagation();
-
-                            if (resizeState.isResizing && resizeState.resizeHandle) {
-                              if (selectedImage?.watermarkMark) {
-                                const mark = selectedImage.watermarkMark;
-                                let newMark = { ...mark };
-                                const minSize = Math.max(0.01, 0.015 / zoom);
-                                
-                                switch (resizeState.resizeHandle) {
-                                  case 'se':
-                                    newMark.width = Math.max(minSize, x - mark.x);
-                                    newMark.height = Math.max(minSize, y - mark.y);
-                                    break;
-                                  case 'nw':
-                                    const newWidth = mark.width + (mark.x - x);
-                                    const newHeight = mark.height + (mark.y - y);
-                                    if (newWidth > minSize && newHeight > minSize) {
-                                      newMark.x = x;
-                                      newMark.y = y;
-                                      newMark.width = newWidth;
-                                      newMark.height = newHeight;
-                                    }
-                                    break;
-                                  case 'ne':
-                                    const neWidth = Math.max(minSize, x - mark.x);
-                                    const neHeight = mark.height + (mark.y - y);
-                                    if (neHeight > minSize) {
-                                      newMark.y = y;
-                                      newMark.width = neWidth;
-                                      newMark.height = neHeight;
-                                    }
-                                    break;
-                                  case 'sw':
-                                    const swWidth = mark.width + (mark.x - x);
-                                    const swHeight = Math.max(minSize, y - mark.y);
-                                    if (swWidth > minSize) {
-                                      newMark.x = x;
-                                      newMark.width = swWidth;
-                                      newMark.height = swHeight;
-                                    }
-                                    break;
-                                  case 'n':
-                                    const nHeight = mark.height + (mark.y - y);
-                                    if (nHeight > minSize) {
-                                      newMark.y = y;
-                                      newMark.height = nHeight;
-                                    }
-                                    break;
-                                  case 's':
-                                    newMark.height = Math.max(minSize, y - mark.y);
-                                    break;
-                                  case 'e':
-                                    newMark.width = Math.max(minSize, x - mark.x);
-                                    break;
-                                  case 'w':
-                                    const wWidth = mark.width + (mark.x - x);
-                                    if (wWidth > minSize) {
-                                      newMark.x = x;
-                                      newMark.width = wWidth;
-                                    }
-                                    break;
-                                }
-                                
-                                setImages(prevImages => prevImages.map(img => 
-                                  img.id === selectedImage.id ? { ...img, watermarkMark: newMark } : img
-                                ));
-                              }
-                            } else if (dragState.isDragging) {
-                              if (selectedMark) {
-                                if (selectedImage?.watermarkMark) {
-                                  const mark = selectedImage.watermarkMark;
-                                  const newX = Math.max(0, Math.min(1 - mark.width, x - dragState.startX));
-                                  const newY = Math.max(0, Math.min(1 - mark.height, y - dragState.startY));
-                                  setImages(prevImages => prevImages.map(img => 
-                                    img.id === selectedImage.id ? {
-                                      ...img,
-                                      watermarkMark: { ...mark, x: newX, y: newY }
-                                    } : img
-                                  ));
-                                }
-                              } else {
-                                setDragState(prev => ({ ...prev, currentX: x, currentY: y }));
-                              }
-                            }
-                          }}
-                          onMouseUp={(e) => {
-                            if (!isMarkingMode) return;
-                            e.preventDefault();
-                            e.stopPropagation();
-                            
-                            e.currentTarget.style.cursor = 'crosshair';
-                            
-                            if (resizeState.isResizing) {
-                              setResizeState({
-                                isResizing: false,
-                                resizeHandle: null,
-                                startX: 0,
-                                startY: 0
-                              });
-                              return;
-                            }
-                            
-                            if (dragState.isDragging && !selectedMark) {
-                              const { startX, startY, currentX, currentY } = dragState;
-                              const left = Math.min(startX, currentX);
-                              const top = Math.min(startY, currentY);
-                              const width = Math.abs(currentX - startX);
-                              const height = Math.abs(currentY - startY);
-                              
-                              const minSize = Math.max(0.01, 0.015 / zoom);
-                              if (width > minSize && height > minSize) {
-                                setImages(prevImages => prevImages.map(img => 
-                                  img.id === selectedImage.id ? {
-                                    ...img,
-                                    watermarkMark: { x: left, y: top, width, height }
-                                  } : img
-                                ));
-                                setSelectedMark(true);
-                              }
-                            }
-                            
-                            setDragState({
-                              isDragging: false,
-                              startX: 0,
-                              startY: 0,
-                              currentX: 0,
-                              currentY: 0
-                            });
-                          }}
-                        />
-                        
-                        {/* 水印标记覆盖层 */}
-                        {selectedImage.watermarkMark && (
-                          <div 
-                            className="absolute pointer-events-none transition-all duration-150 ease-out"
-                            style={{
-                              left: `${selectedImage.watermarkMark.x * 100}%`,
-                              top: `${selectedImage.watermarkMark.y * 100}%`,
-                              width: `${selectedImage.watermarkMark.width * 100}%`,
-                              height: `${selectedImage.watermarkMark.height * 100}%`,
-                            }}
-                          >
-                            <div className={`absolute inset-0 ${isMarkingMode ? 'bg-transparent' : 'bg-blue-500 bg-opacity-10'} transition-colors duration-200`} />
-                            <div 
-                              className="absolute inset-0 border-2 border-dashed border-blue-500 rounded-sm opacity-90 transition-all duration-200" 
-                              style={{ borderWidth: `${Math.max(1, 2 / zoom)}px` }} 
-                            />
-                            
-                            {selectedMark && isMarkingMode && (
-                              <>
-                                {[
-                                  { pos: 'nw', style: { top: -1, left: -1 }, cursor: 'nw-resize' },
-                                  { pos: 'ne', style: { top: -1, right: -1 }, cursor: 'ne-resize' },
-                                  { pos: 'sw', style: { bottom: -1, left: -1 }, cursor: 'sw-resize' },
-                                  { pos: 'se', style: { bottom: -1, right: -1 }, cursor: 'se-resize' },
-                                  { pos: 'n', style: { top: -0.5, left: '50%', transform: 'translateX(-50%)' }, cursor: 'ns-resize' },
-                                  { pos: 'e', style: { right: -0.5, top: '50%', transform: 'translateY(-50%)' }, cursor: 'ew-resize' },
-                                  { pos: 's', style: { bottom: -0.5, left: '50%', transform: 'translateX(-50%)' }, cursor: 'ns-resize' },
-                                  { pos: 'w', style: { left: -0.5, top: '50%', transform: 'translateY(-50%)' }, cursor: 'ew-resize' }
-                                ].map(({ pos, style, cursor }) => (
-                                  <div
-                                    key={pos}
-                                    className="absolute bg-blue-600 border-2 border-white rounded-full pointer-events-auto hover:bg-blue-700 hover:scale-110 transition-all duration-150 shadow-lg"
-                                    style={{
-                                      ...style,
-                                      width: `${Math.max(8, 12 / zoom)}px`,
-                                      height: `${Math.max(8, 12 / zoom)}px`,
-                                      cursor
-                                    }}
-                                  />
-                                ))}
-                              </>
-                            )}
-                          </div>
-                        )}
-                        
-                        {/* 拖拽预览 */}
-                        {isMarkingMode && dragState.isDragging && !selectedMark && (
-                          <div 
-                            className="absolute border-2 border-dashed border-blue-500 bg-transparent pointer-events-none transition-all duration-75 rounded-sm"
-                            style={{
-                              left: `${Math.min(dragState.startX, dragState.currentX) * 100}%`,
-                              top: `${Math.min(dragState.startY, dragState.currentY) * 100}%`,
-                              width: `${Math.abs(dragState.currentX - dragState.startX) * 100}%`,
-                              height: `${Math.abs(dragState.currentY - dragState.startY) * 100}%`,
-                              borderWidth: `${Math.max(1, 2 / zoom)}px`
-                            }}
-                          />
-                        )}
-                      </div>
-                    ) : (
-                      <div className="text-gray-500 text-center">
-                        <p>暂无处理结果</p>
-                        <p className="text-sm mt-2">点击"去水印"开始处理</p>
-                      </div>
-                    )}
-                  </div>
+            
+            {/* Processed Image */}
+            <div className="flex flex-col min-h-0">
+              <div className="flex items-center justify-between mb-2 flex-shrink-0">
+                <span className="text-sm font-medium text-gray-600">处理后</span>
+                <div className="flex items-center space-x-1">
+                  <Button variant="ghost" size="sm" onClick={handleZoomOut} className="h-6 w-6 p-0" disabled={!selectedImage.processedUrl}>
+                    <ZoomOut className="h-3 w-3" />
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={resetZoom} className="h-6 px-2 text-xs" disabled={!selectedImage.processedUrl}>
+                    <RotateCcw className="h-3 w-3" />
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={handleZoomIn} className="h-6 w-6 p-0" disabled={!selectedImage.processedUrl}>
+                    <ZoomIn className="h-3 w-3" />
+                  </Button>
+                  <span className="text-xs text-gray-500 ml-2">{Math.round(zoom * 100)}%</span>
                 </div>
               </div>
+              <div ref={processedScrollRef} className="flex-1 relative bg-white rounded-lg border overflow-auto min-h-0" onScroll={e => {
+            const target = e.target as HTMLDivElement;
+            syncScroll('processed', target.scrollLeft, target.scrollTop);
+          }}>
+                {selectedImage.processedUrl ? <div className="p-4 flex items-center justify-center min-h-full">
+                    <div className="relative" style={{
+                      transform: `scale(${zoom})`,
+                      transformOrigin: 'center center'
+                    }}>
+                      <img src={selectedImage.processedUrl} alt="处理后" className="block object-contain" draggable={false} />
+                    </div>
+                  </div> : <div className="absolute inset-0 flex items-center justify-center text-gray-400 text-sm">
+                    {isProcessing ? <div className="text-center">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-2"></div>
+                        <div className="text-xs">正在处理...</div>
+                      </div> : '等待处理'}
+                  </div>}
+              </div>
             </div>
-          </div>
-        ) : (
-          <div className="flex-1 flex items-center justify-center">
-            <div className="text-center text-gray-500">
-              <Upload className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>请上传图片开始处理</p>
+          </div> : <div className="flex-1 flex items-center justify-center text-gray-500">
+            <div className="text-center">
+              <p className="text-lg mb-2">请从左侧列表中选择一张图片进行处理</p>
+              <p className="text-sm text-gray-400">上传后将在此处看到图片对比</p>
             </div>
-          </div>
-        )}
+          </div>}
       </div>
       
       {/* Batch Download Dialog */}
