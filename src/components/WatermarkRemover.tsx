@@ -1298,13 +1298,14 @@ const WatermarkRemover = () => {
     const isDisabled = isProcessing || isBatchProcessing || !imageItem.watermarkMark || !imageItem.isMarkingCompleted;
     const needsMarking = !imageItem.watermarkMark;
     const needsCompletion = imageItem.watermarkMark && !imageItem.isMarkingCompleted;
+    const isTaskRunning = isProcessing || isBatchProcessing;
     
     let tooltipText = "";
     if (needsMarking) {
       tooltipText = "请先标记水印位置";
     } else if (needsCompletion) {
       tooltipText = "请先确认完成水印标记";
-    } else if (isProcessing || isBatchProcessing) {
+    } else if (isTaskRunning) {
       tooltipText = "请等待当前任务完成";
     }
 
@@ -1324,8 +1325,8 @@ const WatermarkRemover = () => {
       </Button>
     );
 
-    // Show tooltip when disabled or when there are specific conditions
-    if (tooltipText && isDisabled) {
+    // Show tooltip when there's a tooltip text to display
+    if (tooltipText) {
       return (
         <Tooltip>
           <TooltipTrigger asChild>
