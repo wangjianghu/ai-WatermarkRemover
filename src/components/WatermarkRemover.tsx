@@ -799,7 +799,7 @@ const WatermarkRemover = () => {
         // Use SD Inpainting algorithm if selected
         if (processingAlgorithm === 'sd-inpainting' && mark) {
           console.log('使用Stable Diffusion Inpainting算法处理');
-          const processedBlob = await processWithSDInpainting(imageFile, mark, sdApiKey);
+          const processedBlob = await processWithSDInpainting(imageFile, mark);
           resolve(processedBlob);
           return;
         }
