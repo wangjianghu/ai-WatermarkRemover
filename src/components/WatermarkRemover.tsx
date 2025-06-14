@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Upload, Download, Trash2, MapPin, RefreshCw, Settings, ZoomIn, ZoomOut, RotateCcw, Undo2, Sparkles, Info } from 'lucide-react';
 import { toast } from 'sonner';
+import BatchDownloadDialog from './BatchDownloadDialog';
 
 interface ImageItem {
   id: string;
@@ -73,6 +74,7 @@ const WatermarkRemover = () => {
     startY: 0
   });
   const [selectedMark, setSelectedMark] = useState<boolean>(false);
+  const [isBatchDownloadOpen, setIsBatchDownloadOpen] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const originalScrollRef = useRef<HTMLDivElement>(null);
   const processedScrollRef = useRef<HTMLDivElement>(null);
@@ -232,13 +234,50 @@ const WatermarkRemover = () => {
   };
   const handleMouseMove = useCallback((event: React.MouseEvent<HTMLImageElement>, imageId: string) => {
     if (!isMarkingMode) return;
-    if (!dragState.isDragging && !resizeState.isResizing) return;
-    event.preventDefault();
-    event.stopPropagation();
+    
     const {
       x,
       y
     } = getImageCoordinates(event);
+    
+    // 如果不在拖拽或调整大小状态，只更新光标样式
+    if (!dragState.isDragging && !resizeState.isResizing) {
+      const selectedImage = images.find(img => img.id === imageId);
+      if (selectedImage?.watermarkMark) {
+        const mark = selectedImage.watermarkMark;
+        const handle = getResizeHandle(x, y, mark);
+        
+        // 设置光标样式
+        const target = event.currentTarget;
+        if (handle) {
+          // 调整大小光标
+          const cursors = {
+            'nw': 'nw-resize',
+            'ne': 'ne-resize', 
+            'sw': 'sw-resize',
+            'se': 'se-resize',
+            'n': 'ns-resize',
+            's': 'ns-resize',
+            'e': 'ew-resize',
+            'w': 'ew-resize'
+          };
+          target.style.cursor = cursors[handle];
+        } else if (x >= mark.x && x <= mark.x + mark.width && y >= mark.y && y <= mark.y + mark.height) {
+          // 在矩形内，使用移动光标
+          target.style.cursor = 'move';
+        } else {
+          // 默认十字光标
+          target.style.cursor = 'crosshair';
+        }
+      } else {
+        event.currentTarget.style.cursor = 'crosshair';
+      }
+      return;
+    }
+    
+    event.preventDefault();
+    event.stopPropagation();
+
     if (resizeState.isResizing && resizeState.resizeHandle) {
       const selectedImage = images.find(img => img.id === imageId);
       if (selectedImage?.watermarkMark) {
@@ -337,6 +376,10 @@ const WatermarkRemover = () => {
     if (!isMarkingMode) return;
     event.preventDefault();
     event.stopPropagation();
+    
+    // 重置光标样式
+    event.currentTarget.style.cursor = 'crosshair';
+    
     if (resizeState.isResizing) {
       setResizeState({
         isResizing: false,
@@ -871,6 +914,16 @@ const WatermarkRemover = () => {
       });
     }
   };
+
+  const handleBatchDownload = () => {
+    const processedImages = images.filter(img => img.processedUrl);
+    if (processedImages.length === 0) {
+      toast.error("暂无已处理的图片", { duration: 800 });
+      return;
+    }
+    setIsBatchDownloadOpen(true);
+  };
+
   const handleImageListClick = (imageId: string) => {
     setSelectedImageId(imageId);
     setSelectedMark(false);
@@ -1045,7 +1098,7 @@ const WatermarkRemover = () => {
                       <Info className="h-4 w-4" />
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-80" side="bottom" align="start">
+                  <PopoverContent className="w-80" side="bottom" align="center">
                     <div className="space-y-4">
                       <div>
                         <h4 className="font-medium text-sm mb-2">处理算法说明</h4>
@@ -1140,10 +1193,14 @@ const WatermarkRemover = () => {
                 <RefreshCw className="h-3 w-3 mr-1" />
                 {isProcessing ? '处理中...' : selectedImage.processCount > 0 ? '继续处理' : '去水印'}
               </Button>
-              {selectedImage.processedUrl && <Button variant="outline" size="sm" onClick={() => handleDownload(selectedImage)} className="text-xs">
-                  <Download className="h-3 w-3 mr-1" />
-                  下载
-                </Button>}
+              <Button variant="outline" size="sm" onClick={() => handleDownload(selectedImage)} className="text-xs">
+                <Download className="h-3 w-3 mr-1" />
+                下载
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleBatchDownload} className="text-xs">
+                <Download className="h-3 w-3 mr-1" />
+                批量下载
+              </Button>
             </div>}
         </div>
         
@@ -1231,6 +1288,13 @@ const WatermarkRemover = () => {
             </div>
           </div>}
       </div>
+      
+      {/* Batch Download Dialog */}
+      <BatchDownloadDialog
+        isOpen={isBatchDownloadOpen}
+        onClose={() => setIsBatchDownloadOpen(false)}
+        images={images}
+      />
     </div>;
 };
 
