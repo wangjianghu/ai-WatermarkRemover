@@ -29,14 +29,16 @@ interface ImageItem {
     height: number;
   };
   processCount: number;
-  isMarkingCompleted: boolean; // 新增：标记是否已完成
+  isMarkingCompleted: boolean;
 }
+
 interface WatermarkMark {
   x: number;
   y: number;
   width: number;
   height: number;
 }
+
 interface DragState {
   isDragging: boolean;
   startX: number;
@@ -44,12 +46,14 @@ interface DragState {
   currentX: number;
   currentY: number;
 }
+
 interface ResizeState {
   isResizing: boolean;
   resizeHandle: 'nw' | 'ne' | 'sw' | 'se' | 'n' | 'e' | 's' | 'w' | null;
   startX: number;
   startY: number;
 }
+
 const WatermarkRemover = () => {
   const [images, setImages] = useState<ImageItem[]>([]);
   const [progress, setProgress] = useState<number>(0);
@@ -92,6 +96,7 @@ const WatermarkRemover = () => {
       setSelectedImageId(images[0].id);
     }
   }, [images, selectedImageId]);
+
   const loadImageDimensions = (file: File): Promise<{
     width: number;
     height: number;
@@ -107,6 +112,7 @@ const WatermarkRemover = () => {
       img.src = URL.createObjectURL(file);
     });
   };
+
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (files && files.length > 0) {
@@ -121,13 +127,14 @@ const WatermarkRemover = () => {
           dimensions,
           watermarkMark: undefined,
           processCount: 0,
-          isMarkingCompleted: false // 初始化为未完成标记
+          isMarkingCompleted: false
         };
       }));
       setImages(prevImages => [...prevImages, ...newImages]);
       event.target.value = '';
     }
   };
+
   const syncScroll = useCallback((source: 'original' | 'processed', scrollLeft: number, scrollTop: number) => {
     const targetRef = source === 'original' ? processedScrollRef : originalScrollRef;
     if (targetRef.current) {
@@ -139,6 +146,7 @@ const WatermarkRemover = () => {
       y: scrollTop
     });
   }, []);
+
   const getImageCoordinates = (event: React.MouseEvent<HTMLImageElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
     const x = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
@@ -148,6 +156,7 @@ const WatermarkRemover = () => {
       y
     };
   };
+
   const handleMouseDown = useCallback((event: React.MouseEvent<HTMLImageElement>, imageId: string) => {
     if (!isMarkingMode) return;
     event.preventDefault();
@@ -196,8 +205,8 @@ const WatermarkRemover = () => {
       currentY: y
     });
   }, [isMarkingMode, images]);
+
   const getResizeHandle = (x: number, y: number, mark: WatermarkMark): 'nw' | 'ne' | 'sw' | 'se' | 'n' | 'e' | 's' | 'w' | null => {
-    // 根据缩放级别调整控制点的检测区域
     const handleSize = Math.max(0.01, 0.02 / zoom);
     const handles = {
       'nw': {
@@ -240,6 +249,7 @@ const WatermarkRemover = () => {
     }
     return null;
   };
+
   const handleMouseMove = useCallback((event: React.MouseEvent<HTMLImageElement>, imageId: string) => {
     if (!isMarkingMode) return;
     
@@ -248,17 +258,17 @@ const WatermarkRemover = () => {
       y
     } = getImageCoordinates(event);
     
-    // 如果不在拖拽或调整大小状态，只更新光标样式
+    // If not dragging or resizing, only update cursor style
     if (!dragState.isDragging && !resizeState.isResizing) {
       const selectedImage = images.find(img => img.id === imageId);
       if (selectedImage?.watermarkMark) {
         const mark = selectedImage.watermarkMark;
         const handle = getResizeHandle(x, y, mark);
         
-        // 设置光标样式
+        // Set cursor style
         const target = event.currentTarget;
         if (handle) {
-          // 调整大小光标
+          // Resizing cursor
           const cursors = {
             'nw': 'nw-resize',
             'ne': 'ne-resize', 
@@ -271,10 +281,10 @@ const WatermarkRemover = () => {
           };
           target.style.cursor = cursors[handle];
         } else if (x >= mark.x && x <= mark.x + mark.width && y >= mark.y && y <= mark.y + mark.height) {
-          // 在矩形内，使用移动光标
+          // Inside rectangle, use move cursor
           target.style.cursor = 'move';
         } else {
-          // 默认十字光标
+          // Default crosshair cursor
           target.style.cursor = 'crosshair';
         }
       } else {
@@ -294,7 +304,7 @@ const WatermarkRemover = () => {
           ...mark
         };
 
-        // 根据缩放级别调整最小尺寸
+        // Adjust minimum size based on zoom level
         const minSize = Math.max(0.01, 0.015 / zoom);
         switch (resizeState.resizeHandle) {
           case 'se':
@@ -380,12 +390,13 @@ const WatermarkRemover = () => {
       }
     }
   }, [isMarkingMode, dragState, resizeState, selectedMark, images, zoom]);
+
   const handleMouseUp = useCallback((event: React.MouseEvent<HTMLImageElement>, imageId: string) => {
     if (!isMarkingMode) return;
     event.preventDefault();
     event.stopPropagation();
     
-    // 重置光标样式
+    // Reset cursor style
     event.currentTarget.style.cursor = 'crosshair';
     
     if (resizeState.isResizing) {
@@ -409,7 +420,7 @@ const WatermarkRemover = () => {
       const width = Math.abs(currentX - startX);
       const height = Math.abs(currentY - startY);
 
-      // 根据缩放级别调整最小尺寸
+      // Adjust minimum size based on zoom level
       const minSize = Math.max(0.01, 0.015 / zoom);
       if (width > minSize && height > minSize) {
         setImages(prevImages => prevImages.map(img => img.id === imageId ? {
@@ -432,21 +443,23 @@ const WatermarkRemover = () => {
       currentY: 0
     });
   }, [isMarkingMode, dragState, selectedMark, zoom]);
+
   const clearWatermarkMark = (imageId: string) => {
     setImages(prevImages => prevImages.map(img => img.id === imageId ? {
       ...img,
       watermarkMark: undefined,
-      isMarkingCompleted: false // 清除标记时重置完成状态
+      isMarkingCompleted: false
     } : img));
     setSelectedMark(false);
   };
+
   const restoreToOriginal = (imageId: string) => {
     setImages(prevImages => prevImages.map(img => img.id === imageId ? {
       ...img,
       processedUrl: null,
       processCount: 0,
       watermarkMark: undefined,
-      isMarkingCompleted: false // 还原时重置完成状态
+      isMarkingCompleted: false
     } : img));
     setSelectedMark(false);
     toast.success("已还原到原图状态", {
@@ -454,7 +467,7 @@ const WatermarkRemover = () => {
     });
   };
 
-  // 完成标记的处理函数
+  // Complete marking processing function
   const handleCompleteMarking = (imageId: string) => {
     const selectedImage = images.find(img => img.id === imageId);
     if (!selectedImage?.watermarkMark) {
@@ -476,7 +489,7 @@ const WatermarkRemover = () => {
     });
   };
 
-  // LaMa算法实现
+  // LaMa algorithm implementation
   const applyLamaInpainting = async (canvas: HTMLCanvasElement, maskRegion: WatermarkMark): Promise<void> => {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -505,6 +518,7 @@ const WatermarkRemover = () => {
     }
     ctx.putImageData(imageData, 0, 0);
   };
+
   const lamaInpaint = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number, radius: number) => {
     const validPixels: Array<{
       r: number;
@@ -515,7 +529,7 @@ const WatermarkRemover = () => {
       weight: number;
     }> = [];
 
-    // 使用更智能的采样策略
+    // Use more intelligent sampling strategy
     for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 16) {
       for (let r = radius; r <= radius * 3; r += 2) {
         const nx = Math.round(x + Math.cos(angle) * r);
@@ -524,7 +538,7 @@ const WatermarkRemover = () => {
           const nIndex = (ny * width + nx) * 4;
           const distance = Math.sqrt((nx - x) * (nx - x) + (ny - y) * (ny - y));
 
-          // 纹理一致性检查
+          // Texture consistency check
           const textureScore = calculateTextureConsistency(data, nx, ny, width, height);
           const weight = 1 / (distance + 1) * (1 + textureScore);
           validPixels.push({
@@ -540,7 +554,7 @@ const WatermarkRemover = () => {
     }
     if (validPixels.length === 0) return null;
 
-    // 基于权重的高级混合
+    // Advanced blending based on weights
     validPixels.sort((a, b) => b.weight - a.weight);
     const topPixels = validPixels.slice(0, Math.min(12, validPixels.length));
     let totalR = 0,
@@ -562,6 +576,7 @@ const WatermarkRemover = () => {
       a: Math.round(totalA / totalWeight)
     };
   };
+
   const calculateTextureConsistency = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number): number => {
     let consistency = 0;
     let count = 0;
@@ -579,6 +594,7 @@ const WatermarkRemover = () => {
     }
     return count > 0 ? consistency / count : 0;
   };
+
   const detectWatermark = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number): number => {
     const index = (y * width + x) * 4;
     const r = data[index];
@@ -614,6 +630,7 @@ const WatermarkRemover = () => {
     }
     return Math.min(confidence, 1.0);
   };
+
   const calculateEdgeStrength = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number): number => {
     const centerIndex = (y * width + x) * 4;
     const centerBrightness = (data[centerIndex] + data[centerIndex + 1] + data[centerIndex + 2]) / 3;
@@ -632,6 +649,7 @@ const WatermarkRemover = () => {
     }
     return maxDiff;
   };
+
   const checkColorUniformity = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number): number => {
     const centerIndex = (y * width + x) * 4;
     const centerR = data[centerIndex];
@@ -654,6 +672,7 @@ const WatermarkRemover = () => {
     }
     return totalCount > 0 ? uniformCount / totalCount : 0;
   };
+
   const getPositionWeight = (x: number, y: number, width: number, height: number): number => {
     const normalizedX = x / width;
     const normalizedY = y / height;
@@ -664,10 +683,12 @@ const WatermarkRemover = () => {
     if ((normalizedX < 0.3 || normalizedX > 0.7) && (normalizedY < 0.3 || normalizedY > 0.7)) return 1.2;
     return 0.8;
   };
+
   const isInMarkedWatermarkArea = (x: number, y: number, mark?: WatermarkMark): boolean => {
     if (!mark) return false;
     return x >= mark.x && x <= mark.x + mark.width && y >= mark.y && y <= mark.y + mark.height;
   };
+
   const smoothEdges = (data: Uint8ClampedArray, width: number, height: number, region: {
     x: number;
     y: number;
@@ -699,6 +720,7 @@ const WatermarkRemover = () => {
       }
     }
   };
+
   const gaussianBlur = (data: Uint8ClampedArray, width: number, height: number, centerX: number, centerY: number, sigma: number) => {
     const radius = Math.ceil(sigma * 2);
     let totalR = 0,
@@ -729,6 +751,7 @@ const WatermarkRemover = () => {
       a: Math.round(totalA / totalWeight)
     } : null;
   };
+
   const repairPixel = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number, confidence: number) => {
     const radius = Math.min(12, Math.max(6, Math.floor(confidence * 12)));
     const validPixels: Array<{
@@ -767,6 +790,7 @@ const WatermarkRemover = () => {
     const useCount = Math.min(20, validPixels.length);
     return weightedAverage(validPixels.slice(0, useCount));
   };
+
   const weightedAverage = (pixels: Array<{
     r: number;
     g: number;
@@ -793,6 +817,7 @@ const WatermarkRemover = () => {
       a: Math.round(totalA / totalWeight)
     };
   };
+
   const processImageCanvas = async (imageFile: File, mark?: WatermarkMark, existingProcessedUrl?: string): Promise<Blob> => {
     return new Promise(async (resolve, reject) => {
       try {
@@ -820,7 +845,7 @@ const WatermarkRemover = () => {
               console.log('使用LaMa算法处理水印区域');
               await applyLamaInpainting(canvas, mark);
             } else {
-              // 传统算法处理
+              // Traditional algorithm processing
               const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
               const data = imageData.data;
               for (let pass = 0; pass < 3; pass++) {
@@ -901,7 +926,7 @@ const WatermarkRemover = () => {
       return;
     }
 
-    // 只处理已完成标记的图片
+    // Process only images with completed marking
     const imagesToProcess = images.filter(img => img.watermarkMark && img.isMarkingCompleted);
 
     if (imagesToProcess.length === 0) {
@@ -963,7 +988,7 @@ const WatermarkRemover = () => {
           console.error(`处理图片 ${imageItem.file.name} 失败:`, error);
           setBatchProgress(prev => ({
             ...prev,
-            [imageItem.id]: -1 // 标记为失败
+            [imageItem.id]: -1 // Mark as failed
           }));
         }
       }
@@ -1008,7 +1033,7 @@ const WatermarkRemover = () => {
       img.id === selectedImageId ? img : {
         ...img,
         watermarkMark: { ...currentMark },
-        isMarkingCompleted: false // 批量应用后需要重新确认
+        isMarkingCompleted: false // Batch apply needs re-confirmation
       }
     ));
 
@@ -1031,6 +1056,7 @@ const WatermarkRemover = () => {
     setSelectedImageId(imageId);
     setSelectedMark(false);
   };
+
   const handleRemoveImage = (imageId: string) => {
     setImages(prevImages => {
       const newImages = prevImages.filter(img => img.id !== imageId);
@@ -1042,15 +1068,19 @@ const WatermarkRemover = () => {
     });
     setSelectedMark(false);
   };
+
   const handleZoomIn = () => {
     setZoom(prev => Math.min(prev * 1.2, 5));
   };
+
   const handleZoomOut = () => {
     setZoom(prev => Math.max(prev / 1.2, 0.1));
   };
+
   const resetZoom = () => {
     setZoom(1);
   };
+
   const renderWatermarkMark = (mark?: WatermarkMark, showInProcessed: boolean = true) => {
     if (!mark || !showInProcessed) return null;
     return (
@@ -1060,17 +1090,17 @@ const WatermarkRemover = () => {
         width: `${mark.width * 100}%`,
         height: `${mark.height * 100}%`,
       }}>
-        {/* 透明矩形背景 - 标记模式时完全透明 */}
+        {/* Transparent rectangle background - marking mode is fully transparent */}
         <div className={`absolute inset-0 ${isMarkingMode ? 'bg-transparent' : 'bg-blue-500 bg-opacity-10'} transition-colors duration-200`} />
         
-        {/* 蓝色虚线边框 */}
+        {/* Blue dashed border */}
         <div className="absolute inset-0 border-2 border-dashed border-blue-500 rounded-sm opacity-90 transition-all duration-200" style={{
           borderWidth: `${Math.max(1, 2 / zoom)}px`
         }} />
 
         {selectedMark && isMarkingMode && showInProcessed && (
           <>
-            {/* 控制点 */}
+            {/* Control points */}
             {[{
               pos: 'nw',
               style: {
@@ -1195,7 +1225,7 @@ const WatermarkRemover = () => {
   };
 
   const handleRemoveWatermark = async (imageItem: ImageItem) => {
-    // 检查是否已完成标记
+    // Check if marking is completed
     if (!imageItem.isMarkingCompleted) {
       toast.error("请先完成水印标记", {
         duration: 1000
@@ -1225,7 +1255,7 @@ const WatermarkRemover = () => {
         duration: 800
       });
 
-      // 模拟进度更新
+      // Simulate progress updates
       const progressInterval = setInterval(() => {
         setProgress(prev => Math.min(prev + 5, 90));
       }, 100);
@@ -1263,7 +1293,7 @@ const WatermarkRemover = () => {
     }
   };
 
-  // 渲染处理按钮的函数，带有禁用状态和提示
+  // Render process button with disabled state and tooltip
   const renderProcessButton = (imageItem: ImageItem, isListItem: boolean = false) => {
     const isDisabled = isProcessing || isBatchProcessing || !imageItem.watermarkMark || !imageItem.isMarkingCompleted;
     const needsMarking = !imageItem.watermarkMark;
@@ -1292,7 +1322,7 @@ const WatermarkRemover = () => {
       </Button>
     );
 
-    // 只在需要标记或需要完成标记时显示提示
+    // Show tooltip only when marking or completion is needed
     if (tooltipText && (needsMarking || needsCompletion)) {
       return (
         <Tooltip>
@@ -1533,7 +1563,7 @@ const WatermarkRemover = () => {
                     <div className="flex flex-wrap items-center gap-2 min-w-0">
                       <Button variant={isMarkingMode ? "default" : "outline"} size="sm" onClick={() => {
                         if (isMarkingMode) {
-                          // 如果当前在标记模式，点击相当于完成标记
+                          // If currently in marking mode, clicking completes the marking
                           if (selectedImage.watermarkMark) {
                             handleCompleteMarking(selectedImage.id);
                           } else {
@@ -1541,10 +1571,10 @@ const WatermarkRemover = () => {
                             setSelectedMark(false);
                           }
                         } else {
-                          // 如果不在标记模式，开始标记
+                          // If not in marking mode, start marking
                           setIsMarkingMode(true);
                           setSelectedMark(false);
-                          // 如果开始新的标记，重置完成状态
+                          // If starting new marking, reset completion status
                           if (selectedImage.isMarkingCompleted) {
                             setImages(prevImages => prevImages.map(img => 
                               img.id === selectedImage.id ? { ...img, isMarkingCompleted: false } : img
