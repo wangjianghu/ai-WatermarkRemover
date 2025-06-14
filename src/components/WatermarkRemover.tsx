@@ -1096,6 +1096,7 @@ const WatermarkRemover = () => {
       });
     }
   };
+
   return <div className="h-full flex">
       {/* Left Sidebar */}
       <div className="w-80 flex-shrink-0 border-r bg-white">
