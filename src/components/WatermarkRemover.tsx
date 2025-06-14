@@ -1,10 +1,10 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Slider } from '@/components/ui/slider';
-import { Upload, Download, Trash2, MapPin, RefreshCw, Settings, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
+import { Upload, Download, Trash2, MapPin, RefreshCw, Settings, ZoomIn, ZoomOut, RotateCcw, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface ImageItem {
@@ -14,14 +14,23 @@ interface ImageItem {
   processedUrl: string | null;
   rotation: number;
   dimensions?: { width: number; height: number };
-  watermarkMarks?: Array<{x: number, y: number, radius: number}>;
+  watermarkMarks?: Array<{x: number, y: number, width: number, height: number}>;
   processCount: number; // 处理次数计数
 }
 
 interface WatermarkMark {
   x: number;
   y: number;
-  radius: number;
+  width: number;
+  height: number;
+}
+
+interface DragState {
+  isDragging: boolean;
+  startX: number;
+  startY: number;
+  currentX: number;
+  currentY: number;
 }
 
 const WatermarkRemover = () => {
@@ -34,6 +43,13 @@ const WatermarkRemover = () => {
   const [markRadius, setMarkRadius] = useState(0.05);
   const [originalZoom, setOriginalZoom] = useState<number>(1);
   const [processedZoom, setProcessedZoom] = useState<number>(1);
+  const [dragState, setDragState] = useState<DragState>({
+    isDragging: false,
+    startX: 0,
+    startY: 0,
+    currentX: 0,
+    currentY: 0
+  });
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const loadImageDimensions = (file: File): Promise<{ width: number; height: number }> => {
@@ -72,27 +88,73 @@ const WatermarkRemover = () => {
     }
   };
 
-  const handleImageClick = (event: React.MouseEvent<HTMLImageElement>, imageId: string) => {
+  const handleMouseDown = useCallback((event: React.MouseEvent<HTMLImageElement>, imageId: string) => {
     if (!isMarkingMode) return;
 
     const rect = event.currentTarget.getBoundingClientRect();
     const x = (event.clientX - rect.left) / rect.width;
     const y = (event.clientY - rect.top) / rect.height;
 
-    setImages(prevImages =>
-      prevImages.map(img =>
-        img.id === imageId
-          ? {
-              ...img,
-              watermarkMarks: [
-                ...(img.watermarkMarks || []),
-                { x, y, radius: markRadius }
-              ]
-            }
-          : img
-      )
-    );
-  };
+    setDragState({
+      isDragging: true,
+      startX: x,
+      startY: y,
+      currentX: x,
+      currentY: y
+    });
+
+    event.preventDefault();
+  }, [isMarkingMode]);
+
+  const handleMouseMove = useCallback((event: React.MouseEvent<HTMLImageElement>) => {
+    if (!isMarkingMode || !dragState.isDragging) return;
+
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = (event.clientX - rect.left) / rect.width;
+    const y = (event.clientY - rect.top) / rect.height;
+
+    setDragState(prev => ({
+      ...prev,
+      currentX: Math.max(0, Math.min(1, x)),
+      currentY: Math.max(0, Math.min(1, y))
+    }));
+  }, [isMarkingMode, dragState.isDragging]);
+
+  const handleMouseUp = useCallback((event: React.MouseEvent<HTMLImageElement>, imageId: string) => {
+    if (!isMarkingMode || !dragState.isDragging) return;
+
+    const { startX, startY, currentX, currentY } = dragState;
+    
+    const left = Math.min(startX, currentX);
+    const top = Math.min(startY, currentY);
+    const width = Math.abs(currentX - startX);
+    const height = Math.abs(currentY - startY);
+
+    // Only add mark if the rectangle has meaningful size
+    if (width > 0.01 && height > 0.01) {
+      setImages(prevImages =>
+        prevImages.map(img =>
+          img.id === imageId
+            ? {
+                ...img,
+                watermarkMarks: [
+                  ...(img.watermarkMarks || []),
+                  { x: left, y: top, width, height }
+                ]
+              }
+            : img
+        )
+      );
+    }
+
+    setDragState({
+      isDragging: false,
+      startX: 0,
+      startY: 0,
+      currentX: 0,
+      currentY: 0
+    });
+  }, [isMarkingMode, dragState]);
 
   const clearWatermarkMarks = (imageId: string) => {
     setImages(prevImages =>
@@ -100,6 +162,22 @@ const WatermarkRemover = () => {
         img.id === imageId ? { ...img, watermarkMarks: [] } : img
       )
     );
+  };
+
+  const restoreToOriginal = (imageId: string) => {
+    setImages(prevImages =>
+      prevImages.map(img =>
+        img.id === imageId 
+          ? { 
+              ...img, 
+              processedUrl: null, 
+              processCount: 0,
+              watermarkMarks: [] 
+            } 
+          : img
+      )
+    );
+    toast.success("已还原到原图状态", { duration: 800 });
   };
 
   const detectWatermark = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number): number => {
@@ -191,8 +269,7 @@ const WatermarkRemover = () => {
     if (!marks || marks.length === 0) return false;
     
     return marks.some(mark => {
-      const distance = Math.sqrt(Math.pow(x - mark.x, 2) + Math.pow(y - mark.y, 2));
-      return distance <= mark.radius;
+      return x >= mark.x && x <= mark.x + mark.width && y >= mark.y && y <= mark.y + mark.height;
     });
   };
 
@@ -507,110 +584,114 @@ const WatermarkRemover = () => {
     setProcessedZoom(1);
   };
 
-  const renderWatermarkMarks = (marks: WatermarkMark[] = [], imageId: string) => {
+  const renderWatermarkMarks = (marks: WatermarkMark[] = []) => {
     return marks.map((mark, index) => (
       <div
         key={index}
-        className="absolute border-2 border-red-500 bg-red-500 bg-opacity-20 rounded-full pointer-events-none"
+        className="absolute border-2 border-red-500 bg-red-500 bg-opacity-20 pointer-events-none"
         style={{
           left: `${mark.x * 100}%`,
           top: `${mark.y * 100}%`,
-          width: `${mark.radius * 200}%`,
-          height: `${mark.radius * 200}%`,
-          transform: 'translate(-50%, -50%)'
+          width: `${mark.width * 100}%`,
+          height: `${mark.height * 100}%`,
         }}
       />
     ));
   };
 
+  const renderDragPreview = () => {
+    if (!isMarkingMode || !dragState.isDragging) return null;
+
+    const { startX, startY, currentX, currentY } = dragState;
+    
+    return (
+      <div
+        className="absolute border-2 border-blue-500 bg-blue-500 bg-opacity-20 pointer-events-none"
+        style={{
+          left: `${startX * 100}%`,
+          top: `${startY * 100}%`,
+          width: `${(currentX - startX) * 100}%`,
+          height: `${(currentY - startY) * 100}%`,
+        }}
+      />
+    );
+  };
+
   const selectedImage = images.find(img => img.id === selectedImageId);
 
   return (
-    <div className="h-full flex flex-col">
-      {progress > 0 && isProcessing && (
-        <div className="flex-shrink-0 px-6 pt-6">
-          <Card>
-            <CardContent className="p-4">
-              <div className="w-full">
+    <div className="h-full flex">
+      {/* Left Sidebar */}
+      <div className="w-80 flex-shrink-0 border-r bg-white">
+        <div className="h-full flex flex-col p-4">
+          {progress > 0 && isProcessing && (
+            <Card className="mb-4">
+              <CardContent className="p-4">
                 <Progress value={progress} />
                 <p className="text-center mt-2 text-sm text-gray-600">处理进度: {progress}%</p>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-      
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-4 gap-6 p-6 min-h-0">
-        <Card className="flex flex-col">
-          <CardContent className="flex flex-col h-full p-4">
-            <div className="flex items-center justify-between mb-4 flex-shrink-0">
-              <h2 className="text-lg font-semibold">图片列表</h2>
-              <div>
-                <input
-                  type="file"
-                  id="upload"
-                  multiple
-                  accept="image/*"
-                  className="hidden"
-                  onChange={handleFileUpload}
-                />
-                <Button asChild disabled={isProcessing} size="sm">
-                  <label htmlFor="upload" className="flex items-center space-x-2 cursor-pointer">
-                    <Upload className="h-4 w-4" />
-                    <span>上传图片</span>
-                  </label>
-                </Button>
-              </div>
-            </div>
+              </CardContent>
+            </Card>
+          )}
 
-            <div className="flex flex-col space-y-2 mb-4">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">处理算法:</span>
-                <select
-                  value={processingAlgorithm}
-                  onChange={(e) => setProcessingAlgorithm(e.target.value as 'enhanced' | 'conservative' | 'aggressive')}
-                  className="text-xs border rounded px-2 py-1"
-                  disabled={isProcessing}
-                >
-                  <option value="enhanced">增强检测</option>
-                  <option value="conservative">保守处理</option>
-                  <option value="aggressive">激进处理</option>
-                </select>
-              </div>
-              
-              <Button
-                variant={isMarkingMode ? "default" : "outline"}
-                size="sm"
-                onClick={() => setIsMarkingMode(!isMarkingMode)}
-                disabled={isProcessing}
-                className="w-full"
-              >
-                <MapPin className="h-4 w-4 mr-2" />
-                {isMarkingMode ? '退出标记模式' : '手动标记水印'}
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold">图片列表</h2>
+            <div>
+              <input
+                type="file"
+                id="upload"
+                multiple
+                accept="image/*"
+                className="hidden"
+                onChange={handleFileUpload}
+              />
+              <Button asChild disabled={isProcessing} size="sm">
+                <label htmlFor="upload" className="flex items-center space-x-2 cursor-pointer">
+                  <Upload className="h-4 w-4" />
+                  <span>上传图片</span>
+                </label>
               </Button>
-              {isMarkingMode && (
-                <div className="space-y-2 pt-2 border-t mt-2">
-                  <label htmlFor="mark-radius" className="text-sm font-medium flex justify-between items-center">
-                    <span>标记半径</span>
-                    <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">{(markRadius * 100).toFixed(0)}%</span>
-                  </label>
-                  <Slider
-                    id="mark-radius"
-                    min={1}
-                    max={25}
-                    step={1}
-                    value={[markRadius * 100]}
-                    onValueChange={(value) => setMarkRadius(value[0] / 100)}
-                  />
-                </div>
-              )}
+            </div>
+          </div>
+
+          <div className="flex flex-col space-y-2 mb-4">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium">处理算法:</span>
+              <select
+                value={processingAlgorithm}
+                onChange={(e) => setProcessingAlgorithm(e.target.value as 'enhanced' | 'conservative' | 'aggressive')}
+                className="text-xs border rounded px-2 py-1"
+                disabled={isProcessing}
+              >
+                <option value="enhanced">增强检测</option>
+                <option value="conservative">保守处理</option>
+                <option value="aggressive">激进处理</option>
+              </select>
             </div>
             
-            <div className="flex flex-col space-y-2 flex-1 overflow-y-auto">
+            <Button
+              variant={isMarkingMode ? "default" : "outline"}
+              size="sm"
+              onClick={() => setIsMarkingMode(!isMarkingMode)}
+              disabled={isProcessing}
+              className="w-full"
+            >
+              <MapPin className="h-4 w-4 mr-2" />
+              {isMarkingMode ? '退出标记模式' : '手动标记水印'}
+            </Button>
+            
+            {isMarkingMode && (
+              <div className="text-sm text-blue-600 bg-blue-50 px-3 py-1 rounded">
+                拖动鼠标创建矩形标记
+              </div>
+            )}
+          </div>
+          
+          <ScrollArea className="flex-1">
+            <div className="space-y-2">
               {images.map(image => (
                 <div
                   key={image.id}
-                  className={`flex items-center justify-between p-3 border rounded-md cursor-pointer transition-colors flex-shrink-0 ${
+                  className={`flex items-center justify-between p-3 border rounded-md cursor-pointer transition-colors ${
                     selectedImageId === image.id ? 'bg-blue-50 border-blue-200' : 'hover:bg-gray-50'
                   }`}
                   onClick={() => handleImageListClick(image.id)}
@@ -641,217 +722,212 @@ const WatermarkRemover = () => {
                 </div>
               ))}
             </div>
-          </CardContent>
-        </Card>
+          </ScrollArea>
+        </div>
+      </div>
 
-        <Card className="lg:col-span-3 flex flex-col">
-          <CardContent className="flex flex-col h-full p-4">
-            <div className="flex items-center justify-between mb-4 flex-shrink-0">
-              <h2 className="text-lg font-semibold whitespace-nowrap">图片处理结果</h2>
-              {isMarkingMode && (
-                <div className="text-sm text-blue-600 bg-blue-50 px-3 py-1 rounded">
-                  点击图片标记水印位置
-                </div>
+      {/* Main Content Area - Full Screen */}
+      <div className="flex-1 flex flex-col bg-gray-50">
+        <div className="flex items-center justify-between p-4 bg-white border-b">
+          <h2 className="text-lg font-semibold">图片处理结果</h2>
+          {selectedImage && (
+            <div className="flex items-center space-x-2">
+              {selectedImage.watermarkMarks && selectedImage.watermarkMarks.length > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => clearWatermarkMarks(selectedImage.id)}
+                  className="text-xs"
+                >
+                  清除标记
+                </Button>
               )}
+              {selectedImage.processedUrl && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => restoreToOriginal(selectedImage.id)}
+                  className="text-xs"
+                >
+                  <Undo2 className="h-3 w-3 mr-1" />
+                  还原原图
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleRemoveWatermark(selectedImage)}
+                disabled={isProcessing}
+                className="text-xs"
+              >
+                <RefreshCw className="h-3 w-3 mr-1" />
+                {isProcessing && selectedImageId === selectedImage.id ? '处理中...' : (selectedImage.processCount > 0 ? '继续处理' : '去水印')}
+              </Button>
+              {selectedImage.processedUrl && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleDownload(selectedImage)}
+                  className="text-xs"
+                >
+                  <Download className="h-3 w-3 mr-1" />
+                  下载
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleRemoveImage(selectedImage.id)}
+                className="text-xs"
+              >
+                <Trash2 className="h-3 w-3" />
+              </Button>
+            </div>
+          )}
+        </div>
+        
+        {selectedImage ? (
+          <div className="flex-1 grid grid-cols-2 gap-4 p-4 min-h-0">
+            {/* Original Image */}
+            <div className="flex flex-col">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-gray-600">原图</span>
+                <div className="flex items-center space-x-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleOriginalZoomOut}
+                    className="h-6 w-6 p-0"
+                  >
+                    <ZoomOut className="h-3 w-3" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={resetOriginalZoom}
+                    className="h-6 px-2 text-xs"
+                  >
+                    <RotateCcw className="h-3 w-3" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleOriginalZoomIn}
+                    className="h-6 w-6 p-0"
+                  >
+                    <ZoomIn className="h-3 w-3" />
+                  </Button>
+                </div>
+              </div>
+              <div className="flex-1 relative bg-white rounded-lg border overflow-hidden">
+                <ScrollArea className="w-full h-full">
+                  <div className="w-full h-full flex items-center justify-center p-4">
+                    <div className="relative">
+                      <img
+                        src={selectedImage.url}
+                        alt="原图"
+                        className={`block max-w-full max-h-full object-contain ${
+                          isMarkingMode ? 'cursor-crosshair' : ''
+                        }`}
+                        style={{
+                          transform: `scale(${originalZoom})`,
+                          transformOrigin: 'center center'
+                        }}
+                        onMouseDown={(e) => handleMouseDown(e, selectedImage.id)}
+                        onMouseMove={handleMouseMove}
+                        onMouseUp={(e) => handleMouseUp(e, selectedImage.id)}
+                        draggable={false}
+                      />
+                      {renderWatermarkMarks(selectedImage.watermarkMarks)}
+                      {renderDragPreview()}
+                    </div>
+                  </div>
+                </ScrollArea>
+              </div>
             </div>
             
-            {images.length > 0 ? (
-              <div className="flex-1 min-h-0 overflow-y-auto">
-                <div className="space-y-6">
-                  {selectedImage ? (
-                    <div
-                      key={selectedImage.id}
-                      className="bg-white rounded-lg border p-4 space-y-4"
-                    >
-                      <div className="flex items-center justify-between">
-                        <h3 className="font-medium text-sm truncate" title={selectedImage.file.name}>
-                          {selectedImage.file.name}
-                        </h3>
-                        <div className="flex items-center space-x-2">
-                          {selectedImage.watermarkMarks && selectedImage.watermarkMarks.length > 0 && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => clearWatermarkMarks(selectedImage.id)}
-                              className="text-xs"
-                            >
-                              清除标记
-                            </Button>
-                          )}
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleRemoveWatermark(selectedImage)}
-                            disabled={isProcessing}
-                            className="text-xs"
-                          >
-                            <RefreshCw className="h-3 w-3 mr-1" />
-                            {isProcessing && selectedImageId === selectedImage.id ? '处理中...' : (selectedImage.processCount > 0 ? '继续处理' : '去水印')}
-                          </Button>
-                          {selectedImage.processedUrl && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleDownload(selectedImage)}
-                              className="text-xs"
-                            >
-                              <Download className="h-3 w-3 mr-1" />
-                              下载
-                            </Button>
-                          )}
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleRemoveImage(selectedImage.id)}
-                            className="text-xs"
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      </div>
-                      
-                      <div className="grid grid-cols-2 gap-6">
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm font-medium text-gray-600">原图</span>
-                            <div className="flex items-center space-x-1">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={handleOriginalZoomOut}
-                                className="h-6 w-6 p-0"
-                              >
-                                <ZoomOut className="h-3 w-3" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={resetOriginalZoom}
-                                className="h-6 px-2 text-xs"
-                              >
-                                <RotateCcw className="h-3 w-3" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={handleOriginalZoomIn}
-                                className="h-6 w-6 p-0"
-                              >
-                                <ZoomIn className="h-3 w-3" />
-                              </Button>
-                              {isMarkingMode && (
-                                <span className="text-xs text-gray-500 ml-2">点击标记</span>
-                              )}
-                            </div>
-                          </div>
-                          <div className="relative bg-gray-50 rounded-lg overflow-hidden aspect-video">
-                            <ScrollArea className="w-full h-full">
-                              <div className="w-full h-full flex items-center justify-center p-2">
-                                <div className="relative">
-                                  <img
-                                    src={selectedImage.url}
-                                    alt="原图"
-                                    className="cursor-pointer block max-w-full max-h-full object-contain"
-                                    style={{
-                                      transform: `scale(${originalZoom})`,
-                                      transformOrigin: 'center center'
-                                    }}
-                                    onClick={(e) => handleImageClick(e, selectedImage.id)}
-                                  />
-                                  {renderWatermarkMarks(selectedImage.watermarkMarks, selectedImage.id)}
-                                </div>
-                              </div>
-                            </ScrollArea>
-                          </div>
-                        </div>
-                        
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm font-medium text-gray-600">处理后</span>
-                            <div className="flex items-center space-x-1">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={handleProcessedZoomOut}
-                                className="h-6 w-6 p-0"
-                                disabled={!selectedImage.processedUrl}
-                              >
-                                <ZoomOut className="h-3 w-3" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={resetProcessedZoom}
-                                className="h-6 px-2 text-xs"
-                                disabled={!selectedImage.processedUrl}
-                              >
-                                <RotateCcw className="h-3 w-3" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={handleProcessedZoomIn}
-                                className="h-6 w-6 p-0"
-                                disabled={!selectedImage.processedUrl}
-                              >
-                                <ZoomIn className="h-3 w-3" />
-                              </Button>
-                            </div>
-                          </div>
-                          <div className="relative bg-gray-50 rounded-lg overflow-hidden aspect-video">
-                            {selectedImage.processedUrl ? (
-                              <ScrollArea className="w-full h-full">
-                                <div className="w-full h-full flex items-center justify-center p-2">
-                                  <div className="relative">
-                                    <img
-                                      src={selectedImage.processedUrl}
-                                      alt="处理后"
-                                      className={`block max-w-full max-h-full object-contain ${isMarkingMode ? 'cursor-pointer' : ''}`}
-                                      style={{
-                                        transform: `scale(${processedZoom})`,
-                                        transformOrigin: 'center center'
-                                      }}
-                                      onClick={(e) => {
-                                        if (isMarkingMode) handleImageClick(e, selectedImage.id);
-                                      }}
-                                    />
-                                    {isMarkingMode && renderWatermarkMarks(selectedImage.watermarkMarks, selectedImage.id)}
-                                  </div>
-                                </div>
-                              </ScrollArea>
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center text-gray-400 text-sm">
-                                {isProcessing && selectedImageId === selectedImage.id ? (
-                                  <div className="text-center">
-                                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-2"></div>
-                                    <div className="text-xs">正在处理...</div>
-                                  </div>
-                                ) : (
-                                  '等待处理'
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-center h-full text-gray-500">
-                      <p>请从左侧列表中选择一张图片进行处理</p>
-                    </div>
-                  )}
+            {/* Processed Image */}
+            <div className="flex flex-col">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-gray-600">处理后</span>
+                <div className="flex items-center space-x-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleProcessedZoomOut}
+                    className="h-6 w-6 p-0"
+                    disabled={!selectedImage.processedUrl}
+                  >
+                    <ZoomOut className="h-3 w-3" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={resetProcessedZoom}
+                    className="h-6 px-2 text-xs"
+                    disabled={!selectedImage.processedUrl}
+                  >
+                    <RotateCcw className="h-3 w-3" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleProcessedZoomIn}
+                    className="h-6 w-6 p-0"
+                    disabled={!selectedImage.processedUrl}
+                  >
+                    <ZoomIn className="h-3 w-3" />
+                  </Button>
                 </div>
               </div>
-            ) : (
-              <div className="flex items-center justify-center flex-1 text-gray-500 border-2 border-dashed border-gray-200 rounded-lg">
-                <div className="text-center">
-                  <p className="text-lg mb-2">请上传图片</p>
-                  <p className="text-sm text-gray-400">上传后将在此处看到图片对比列表</p>
-                </div>
+              <div className="flex-1 relative bg-white rounded-lg border overflow-hidden">
+                {selectedImage.processedUrl ? (
+                  <ScrollArea className="w-full h-full">
+                    <div className="w-full h-full flex items-center justify-center p-4">
+                      <div className="relative">
+                        <img
+                          src={selectedImage.processedUrl}
+                          alt="处理后"
+                          className={`block max-w-full max-h-full object-contain ${
+                            isMarkingMode ? 'cursor-crosshair' : ''
+                          }`}
+                          style={{
+                            transform: `scale(${processedZoom})`,
+                            transformOrigin: 'center center'
+                          }}
+                          onMouseDown={(e) => handleMouseDown(e, selectedImage.id)}
+                          onMouseMove={handleMouseMove}
+                          onMouseUp={(e) => handleMouseUp(e, selectedImage.id)}
+                          draggable={false}
+                        />
+                        {isMarkingMode && renderWatermarkMarks(selectedImage.watermarkMarks)}
+                        {isMarkingMode && renderDragPreview()}
+                      </div>
+                    </div>
+                  </ScrollArea>
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-gray-400 text-sm">
+                    {isProcessing && selectedImageId === selectedImage.id ? (
+                      <div className="text-center">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-2"></div>
+                        <div className="text-xs">正在处理...</div>
+                      </div>
+                    ) : (
+                      '等待处理'
+                    )}
+                  </div>
+                )}
               </div>
-            )}
-          </CardContent>
-        </Card>
+            </div>
+          </div>
+        ) : (
+          <div className="flex-1 flex items-center justify-center text-gray-500">
+            <div className="text-center">
+              <p className="text-lg mb-2">请从左侧列表中选择一张图片进行处理</p>
+              <p className="text-sm text-gray-400">上传后将在此处看到图片对比</p>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
