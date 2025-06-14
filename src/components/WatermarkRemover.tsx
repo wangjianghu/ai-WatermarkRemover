@@ -180,7 +180,7 @@ const WatermarkRemover = () => {
   }, [isMarkingMode, images]);
 
   const getResizeHandle = (x: number, y: number, mark: WatermarkMark): 'nw' | 'ne' | 'sw' | 'se' | 'n' | 'e' | 's' | 'w' | null => {
-    const handleSize = 0.02;
+    const handleSize = 0.015; // Reduced handle size for better precision
     const handles = {
       'nw': { x: mark.x, y: mark.y },
       'ne': { x: mark.x + mark.width, y: mark.y },
@@ -215,15 +215,17 @@ const WatermarkRemover = () => {
         const mark = selectedImage.watermarkMark;
         let newMark = { ...mark };
 
+        const minSize = 0.015; // Minimum mark size
+
         switch (resizeState.resizeHandle) {
           case 'se':
-            newMark.width = Math.max(0.02, x - mark.x);
-            newMark.height = Math.max(0.02, y - mark.y);
+            newMark.width = Math.max(minSize, x - mark.x);
+            newMark.height = Math.max(minSize, y - mark.y);
             break;
           case 'nw':
             const newWidth = mark.width + (mark.x - x);
             const newHeight = mark.height + (mark.y - y);
-            if (newWidth > 0.02 && newHeight > 0.02) {
+            if (newWidth > minSize && newHeight > minSize) {
               newMark.x = x;
               newMark.y = y;
               newMark.width = newWidth;
@@ -231,9 +233,9 @@ const WatermarkRemover = () => {
             }
             break;
           case 'ne':
-            const neWidth = Math.max(0.02, x - mark.x);
+            const neWidth = Math.max(minSize, x - mark.x);
             const neHeight = mark.height + (mark.y - y);
-            if (neHeight > 0.02) {
+            if (neHeight > minSize) {
               newMark.y = y;
               newMark.width = neWidth;
               newMark.height = neHeight;
@@ -241,11 +243,31 @@ const WatermarkRemover = () => {
             break;
           case 'sw':
             const swWidth = mark.width + (mark.x - x);
-            const swHeight = Math.max(0.02, y - mark.y);
-            if (swWidth > 0.02) {
+            const swHeight = Math.max(minSize, y - mark.y);
+            if (swWidth > minSize) {
               newMark.x = x;
               newMark.width = swWidth;
               newMark.height = swHeight;
+            }
+            break;
+          case 'n':
+            const nHeight = mark.height + (mark.y - y);
+            if (nHeight > minSize) {
+              newMark.y = y;
+              newMark.height = nHeight;
+            }
+            break;
+          case 's':
+            newMark.height = Math.max(minSize, y - mark.y);
+            break;
+          case 'e':
+            newMark.width = Math.max(minSize, x - mark.x);
+            break;
+          case 'w':
+            const wWidth = mark.width + (mark.x - x);
+            if (wWidth > minSize) {
+              newMark.x = x;
+              newMark.width = wWidth;
             }
             break;
         }
@@ -306,7 +328,7 @@ const WatermarkRemover = () => {
       const width = Math.abs(currentX - startX);
       const height = Math.abs(currentY - startY);
 
-      if (width > 0.02 && height > 0.02) {
+      if (width > 0.015 && height > 0.015) {
         setImages(prevImages =>
           prevImages.map(img =>
             img.id === imageId
@@ -353,7 +375,7 @@ const WatermarkRemover = () => {
     toast.success("已还原到原图状态", { duration: 800 });
   };
 
-  // Enhanced watermark detection with better red text detection
+  // Enhanced watermark detection with better semi-transparent white text detection
   const detectWatermark = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number): number => {
     const index = (y * width + x) * 4;
     const r = data[index];
@@ -363,34 +385,101 @@ const WatermarkRemover = () => {
     
     let confidence = 0;
     
-    // Enhanced red text detection
-    if (r > 150 && g < 100 && b < 100) {
-      confidence += 0.6; // High confidence for red pixels
+    // Enhanced semi-transparent white text detection
+    const isWhiteish = r > 200 && g > 200 && b > 200;
+    const isSemiTransparent = a > 50 && a < 250;
+    const brightness = (r + g + b) / 3;
+    
+    // High confidence for semi-transparent white/light colors
+    if (isWhiteish && isSemiTransparent) {
+      confidence += 0.8; // Very high confidence
     }
     
-    // Orange/yellow text detection (common in watermarks)
+    // Semi-transparent pixels with high brightness
+    if (brightness > 220 && isSemiTransparent) {
+      confidence += 0.7;
+    }
+    
+    // Enhanced red text detection
+    if (r > 150 && g < 100 && b < 100) {
+      confidence += 0.6;
+    }
+    
+    // Orange/yellow text detection
     if (r > 180 && g > 100 && g < 200 && b < 100) {
       confidence += 0.5;
     }
     
-    // Alpha transparency check
+    // General transparency check
     if (a < 245) {
+      confidence += 0.4;
+    }
+    
+    // Edge detection for text boundaries
+    const edgeStrength = calculateEdgeStrength(data, x, y, width, height);
+    if (edgeStrength > 30) {
       confidence += 0.3;
     }
     
-    // Brightness extremes
-    const brightness = (r + g + b) / 3;
-    if (brightness > 220 || brightness < 50) {
+    // Color uniformity check (watermarks often have consistent colors)
+    const colorUniformity = checkColorUniformity(data, x, y, width, height);
+    if (colorUniformity > 0.7) {
       confidence += 0.2;
     }
     
-    // Low color variance (typical of watermarks)
-    const colorVariance = Math.max(Math.abs(r - g), Math.abs(g - b), Math.abs(r - b));
-    if (colorVariance > 50) { // Text usually has high color variance
-      confidence += 0.3;
+    return Math.min(confidence, 1.0);
+  };
+
+  const calculateEdgeStrength = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number): number => {
+    const centerIndex = (y * width + x) * 4;
+    const centerBrightness = (data[centerIndex] + data[centerIndex + 1] + data[centerIndex + 2]) / 3;
+    
+    let maxDiff = 0;
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        
+        const nx = x + dx;
+        const ny = y + dy;
+        
+        if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+          const neighborIndex = (ny * width + nx) * 4;
+          const neighborBrightness = (data[neighborIndex] + data[neighborIndex + 1] + data[neighborIndex + 2]) / 3;
+          maxDiff = Math.max(maxDiff, Math.abs(centerBrightness - neighborBrightness));
+        }
+      }
+    }
+    return maxDiff;
+  };
+
+  const checkColorUniformity = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number): number => {
+    const centerIndex = (y * width + x) * 4;
+    const centerR = data[centerIndex];
+    const centerG = data[centerIndex + 1];
+    const centerB = data[centerIndex + 2];
+    
+    let uniformCount = 0;
+    let totalCount = 0;
+    const radius = 2;
+    
+    for (let dy = -radius; dy <= radius; dy++) {
+      for (let dx = -radius; dx <= radius; dx++) {
+        const nx = x + dx;
+        const ny = y + dy;
+        
+        if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+          const nIndex = (ny * width + nx) * 4;
+          const colorDiff = Math.abs(data[nIndex] - centerR) + 
+                           Math.abs(data[nIndex + 1] - centerG) + 
+                           Math.abs(data[nIndex + 2] - centerB);
+          
+          if (colorDiff < 40) uniformCount++;
+          totalCount++;
+        }
+      }
     }
     
-    return Math.min(confidence, 1.0);
+    return totalCount > 0 ? uniformCount / totalCount : 0;
   };
 
   const getPositionWeight = (x: number, y: number, width: number, height: number): number => {
@@ -409,9 +498,9 @@ const WatermarkRemover = () => {
     return x >= mark.x && x <= mark.x + mark.width && y >= mark.y && y <= mark.y + mark.height;
   };
 
-  // Enhanced pixel repair with better blending
+  // Enhanced pixel repair with better blending for semi-transparent watermarks
   const repairPixel = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number, confidence: number) => {
-    const radius = Math.min(8, Math.max(4, Math.floor(confidence * 8))); // Increased radius
+    const radius = Math.min(10, Math.max(5, Math.floor(confidence * 10))); // Larger radius for better repair
     const validPixels: Array<{r: number, g: number, b: number, a: number, weight: number}> = [];
     
     // Collect pixels in a larger area for better repair
@@ -427,7 +516,7 @@ const WatermarkRemover = () => {
           const neighborConfidence = detectWatermark(data, nx, ny, width, height);
           
           // Only use pixels with very low watermark confidence
-          if (neighborConfidence < 0.2) {
+          if (neighborConfidence < 0.15) {
             const distance = Math.sqrt(dx * dx + dy * dy);
             const weight = 1 / (distance * distance + 0.1);
             
@@ -447,7 +536,7 @@ const WatermarkRemover = () => {
     
     // Use more pixels for better blending
     validPixels.sort((a, b) => b.weight - a.weight);
-    const useCount = Math.min(12, validPixels.length);
+    const useCount = Math.min(16, validPixels.length);
     
     return weightedAverage(validPixels.slice(0, useCount));
   };
@@ -491,14 +580,17 @@ const WatermarkRemover = () => {
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         const data = imageData.data;
         
-        // Multiple passes for better watermark removal
-        for (let pass = 0; pass < 3; pass++) {
+        // Multiple passes for better watermark removal (increased to 4 passes)
+        for (let pass = 0; pass < 4; pass++) {
           let processedPixels = 0;
           const watermarkPixels: Array<{x: number, y: number, confidence: number}> = [];
           
-          // Scan every pixel for watermarks
-          for (let y = 0; y < canvas.height; y++) {
-            for (let x = 0; x < canvas.width; x++) {
+          // Skip pixels for performance (process every 2nd pixel in later passes)
+          const step = pass < 2 ? 1 : 2;
+          
+          // Scan pixels for watermarks
+          for (let y = 0; y < canvas.height; y += step) {
+            for (let x = 0; x < canvas.width; x += step) {
               const normalizedX = x / canvas.width;
               const normalizedY = y / canvas.height;
               
@@ -513,9 +605,9 @@ const WatermarkRemover = () => {
                 confidence *= getPositionWeight(x, y, canvas.width, canvas.height);
               }
               
-              let threshold = 0.3; // Lower threshold for more aggressive removal
-              if (processingAlgorithm === 'conservative') threshold = 0.5;
-              else if (processingAlgorithm === 'aggressive') threshold = 0.2;
+              let threshold = 0.25; // Lower threshold for more detection
+              if (processingAlgorithm === 'conservative') threshold = 0.4;
+              else if (processingAlgorithm === 'aggressive') threshold = 0.15;
               
               if (confidence > threshold) {
                 watermarkPixels.push({x, y, confidence});
@@ -534,8 +626,8 @@ const WatermarkRemover = () => {
             const repaired = repairPixel(data, x, y, canvas.width, canvas.height, confidence);
             
             if (repaired) {
-              // More aggressive replacement for persistent watermarks
-              const blendFactor = Math.min(0.9, confidence); // Up to 90% replacement
+              // More aggressive replacement for semi-transparent watermarks
+              const blendFactor = Math.min(0.95, confidence + 0.2); // Up to 95% replacement
               
               data[index] = Math.round(data[index] * (1 - blendFactor) + repaired.r * blendFactor);
               data[index + 1] = Math.round(data[index + 1] * (1 - blendFactor) + repaired.g * blendFactor);
@@ -575,7 +667,6 @@ const WatermarkRemover = () => {
       return;
     }
 
-    setSelectedImageId(imageItem.id);
     setIsProcessing(true);
     setProgress(0);
 
@@ -606,6 +697,9 @@ const WatermarkRemover = () => {
         )
       );
       
+      // Auto-select the processed image
+      setSelectedImageId(imageItem.id);
+      
       if (imageItem.processCount === 0) {
         toast.success("水印去除完成！建议继续处理以获得更好效果", { duration: 1000 });
       } else {
@@ -617,7 +711,6 @@ const WatermarkRemover = () => {
     } finally {
       setIsProcessing(false);
       setProgress(0);
-      setSelectedImageId(null);
     }
   };
 
@@ -667,11 +760,21 @@ const WatermarkRemover = () => {
   const renderWatermarkMark = (mark?: WatermarkMark) => {
     if (!mark) return null;
 
+    const getCursorStyle = (handle: string) => {
+      switch (handle) {
+        case 'nw': case 'se': return 'cursor-nw-resize';
+        case 'ne': case 'sw': return 'cursor-ne-resize';
+        case 'n': case 's': return 'cursor-ns-resize';
+        case 'e': case 'w': return 'cursor-ew-resize';
+        default: return 'cursor-move';
+      }
+    };
+
     return (
       <div
         className={`absolute border-2 pointer-events-none ${
           selectedMark ? 'border-blue-500 bg-blue-500' : 'border-red-500 bg-red-500'
-        } bg-opacity-20`}
+        } bg-opacity-20 transition-all duration-150`}
         style={{
           left: `${mark.x * 100}%`,
           top: `${mark.y * 100}%`,
@@ -681,10 +784,17 @@ const WatermarkRemover = () => {
       >
         {selectedMark && isMarkingMode && (
           <>
-            <div className="absolute w-2 h-2 bg-blue-500 border border-white -top-1 -left-1 cursor-nw-resize pointer-events-auto" />
-            <div className="absolute w-2 h-2 bg-blue-500 border border-white -top-1 -right-1 cursor-ne-resize pointer-events-auto" />
-            <div className="absolute w-2 h-2 bg-blue-500 border border-white -bottom-1 -left-1 cursor-sw-resize pointer-events-auto" />
-            <div className="absolute w-2 h-2 bg-blue-500 border border-white -bottom-1 -right-1 cursor-se-resize pointer-events-auto" />
+            {/* Corner handles */}
+            <div className={`absolute w-3 h-3 bg-blue-500 border border-white -top-1.5 -left-1.5 rounded-sm pointer-events-auto hover:bg-blue-600 transition-colors ${getCursorStyle('nw')}`} />
+            <div className={`absolute w-3 h-3 bg-blue-500 border border-white -top-1.5 -right-1.5 rounded-sm pointer-events-auto hover:bg-blue-600 transition-colors ${getCursorStyle('ne')}`} />
+            <div className={`absolute w-3 h-3 bg-blue-500 border border-white -bottom-1.5 -left-1.5 rounded-sm pointer-events-auto hover:bg-blue-600 transition-colors ${getCursorStyle('sw')}`} />
+            <div className={`absolute w-3 h-3 bg-blue-500 border border-white -bottom-1.5 -right-1.5 rounded-sm pointer-events-auto hover:bg-blue-600 transition-colors ${getCursorStyle('se')}`} />
+            
+            {/* Edge handles */}
+            <div className={`absolute w-3 h-2 bg-blue-500 border border-white -top-1 left-1/2 transform -translate-x-1/2 rounded-sm pointer-events-auto hover:bg-blue-600 transition-colors ${getCursorStyle('n')}`} />
+            <div className={`absolute w-2 h-3 bg-blue-500 border border-white -right-1 top-1/2 transform -translate-y-1/2 rounded-sm pointer-events-auto hover:bg-blue-600 transition-colors ${getCursorStyle('e')}`} />
+            <div className={`absolute w-3 h-2 bg-blue-500 border border-white -bottom-1 left-1/2 transform -translate-x-1/2 rounded-sm pointer-events-auto hover:bg-blue-600 transition-colors ${getCursorStyle('s')}`} />
+            <div className={`absolute w-2 h-3 bg-blue-500 border border-white -left-1 top-1/2 transform -translate-y-1/2 rounded-sm pointer-events-auto hover:bg-blue-600 transition-colors ${getCursorStyle('w')}`} />
           </>
         )}
       </div>
@@ -702,7 +812,7 @@ const WatermarkRemover = () => {
     
     return (
       <div
-        className="absolute border-2 border-blue-500 bg-blue-500 bg-opacity-20 pointer-events-none"
+        className="absolute border-2 border-blue-500 bg-blue-500 bg-opacity-20 pointer-events-none transition-all duration-75"
         style={{
           left: `${left * 100}%`,
           top: `${top * 100}%`,
@@ -769,8 +879,9 @@ const WatermarkRemover = () => {
             <div className="bg-blue-50 p-3 rounded-lg text-sm text-blue-800">
               <p className="font-medium mb-1">处理建议：</p>
               <ul className="text-xs space-y-1">
-                <li>• 对于顽固水印，建议多次处理</li>
-                <li>• 可先手动标记水印区域提高精度</li>
+                <li>• 针对半透明白色水印已优化检测算法</li>
+                <li>• 建议多次处理以彻底去除顽固水印</li>
+                <li>• 可手动标记水印区域提高精度</li>
                 <li>• 激进模式适合处理明显水印</li>
               </ul>
             </div>
@@ -868,7 +979,7 @@ const WatermarkRemover = () => {
                 className="text-xs"
               >
                 <RefreshCw className="h-3 w-3 mr-1" />
-                {isProcessing && selectedImageId === selectedImage.id ? '处理中...' : (selectedImage.processCount > 0 ? '继续处理' : '去水印')}
+                {isProcessing ? '处理中...' : (selectedImage.processCount > 0 ? '继续处理' : '去水印')}
               </Button>
               {selectedImage.processedUrl && (
                 <Button
@@ -1024,7 +1135,7 @@ const WatermarkRemover = () => {
                   </div>
                 ) : (
                   <div className="absolute inset-0 flex items-center justify-center text-gray-400 text-sm">
-                    {isProcessing && selectedImageId === selectedImage.id ? (
+                    {isProcessing ? (
                       <div className="text-center">
                         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-2"></div>
                         <div className="text-xs">正在处理...</div>
