@@ -1295,389 +1295,394 @@ const WatermarkRemover = () => {
     // 只在需要标记或需要完成标记时显示提示
     if (tooltipText && (needsMarking || needsCompletion)) {
       return (
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              {buttonContent}
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>{tooltipText}</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            {buttonContent}
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>{tooltipText}</p>
+          </TooltipContent>
+        </Tooltip>
       );
     }
 
     return buttonContent;
   };
 
-  return <div className="h-full flex">
-      {/* Left Sidebar */}
-      <div className="w-80 flex-shrink-0 border-r bg-white">
-        <div className="h-full flex flex-col p-4">
-          {/* Upload Section */}
-          <div className="space-y-3 flex-shrink-0">
-            <div className="text-center">
-              <input type="file" accept="image/*" multiple onChange={handleFileUpload} className="hidden" id="file-upload" />
-              <label htmlFor="file-upload">
-                <Button variant="outline" className="w-full" asChild>
-                  <span className="cursor-pointer">
-                    <Upload className="h-4 w-4 mr-2" />
-                    上传图片
-                  </span>
+  return (
+    <TooltipProvider>
+      <div className="h-full flex">
+        {/* Left Sidebar */}
+        <div className="w-80 flex-shrink-0 border-r bg-white">
+          <div className="h-full flex flex-col p-4">
+            {/* Upload Section */}
+            <div className="space-y-3 flex-shrink-0">
+              <div className="text-center">
+                <input type="file" accept="image/*" multiple onChange={handleFileUpload} className="hidden" id="file-upload" />
+                <label htmlFor="file-upload">
+                  <Button variant="outline" className="w-full" asChild>
+                    <span className="cursor-pointer">
+                      <Upload className="h-4 w-4 mr-2" />
+                      上传图片
+                    </span>
+                  </Button>
+                </label>
+              </div>
+
+              {/* Batch Process Button */}
+              {images.length > 0 && (
+                <Button 
+                  onClick={handleBatchProcess} 
+                  disabled={isProcessing || isBatchProcessing || images.filter(img => img.watermarkMark && img.isMarkingCompleted).length === 0}
+                  className="w-full"
+                  variant="default"
+                >
+                  <Play className="h-4 w-4 mr-2" />
+                  {isBatchProcessing ? '批量处理中...' : `批量处理已完成标记图片 (${images.filter(img => img.watermarkMark && img.isMarkingCompleted).length})`}
                 </Button>
-              </label>
-            </div>
+              )}
 
-            {/* Batch Process Button */}
-            {images.length > 0 && (
-              <Button 
-                onClick={handleBatchProcess} 
-                disabled={isProcessing || isBatchProcessing || images.filter(img => img.watermarkMark && img.isMarkingCompleted).length === 0}
-                className="w-full"
-                variant="default"
-              >
-                <Play className="h-4 w-4 mr-2" />
-                {isBatchProcessing ? '批量处理中...' : `批量处理已完成标记图片 (${images.filter(img => img.watermarkMark && img.isMarkingCompleted).length})`}
-              </Button>
-            )}
-
-            {/* Algorithm Selection */}
-            <div className="flex items-center space-x-2">
-              <label className="text-sm font-medium whitespace-nowrap">处理算法</label>
-              <div className="flex items-center space-x-2 flex-1">
-                <select value={processingAlgorithm} onChange={e => setProcessingAlgorithm(e.target.value as any)} className="flex-1 p-2 border rounded-md text-sm" style={{
-                maxWidth: '120px'
-              }}>
-                  <option value="lama">LaMa算法</option>
-                  <option value="sd-inpainting">AI智能填充</option>
-                  <option value="enhanced">增强模式</option>
-                  <option value="conservative">保守模式</option>
-                  <option value="aggressive">激进模式</option>
-                </select>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" size="sm" className="h-8 w-8 p-0">
-                      <Info className="h-4 w-4" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-80" side="bottom" align="center">
-                    <div className="space-y-4">
-                      <div>
-                        <h4 className="font-medium text-sm mb-2">处理算法说明</h4>
-                        <p className="text-xs text-gray-600 mb-3">不同算法的特点和适用场景</p>
-                      </div>
-                      <div className="space-y-3">
-                        <div>
-                          <h4 className="font-medium text-purple-600 mb-1 text-xs">AI智能填充 (最新)</h4>
-                          <ul className="text-xs space-y-1 text-gray-700">
-                            <li>• 🧠 基于Stable Diffusion技术</li>
-                            <li>• 🎨 智能理解图像语义内容</li>
-                            <li>• ✨ 重新生成符合逻辑的细节</li>
-                            <li>• 🔍 高清纹理修复和填充</li>
-                            <li>• 🚀 适合复杂背景和精细修复</li>
-                          </ul>
-                        </div>
-                        <div>
-                          <h4 className="font-medium text-blue-600 mb-1 text-xs">LaMa算法 (推荐)</h4>
-                          <ul className="text-xs space-y-1 text-gray-700">
-                            <li>• 🎯 专业大遮罩修复技术</li>
-                            <li>• 🧠 AI智能纹理分析</li>
-                            <li>• ✨ 多尺度语义修复</li>
-                            <li>• 🎨 保持图像自然性</li>
-                            <li>• 🚀 针对标记区域优化</li>
-                          </ul>
-                        </div>
-                        <div>
-                          <h4 className="font-medium text-green-600 mb-1 text-xs">增强模式</h4>
-                          <ul className="text-xs space-y-1 text-gray-700">
-                            <li>• 📊 基于多特征检测算法</li>
-                            <li>• 🔍 智能水印置信度分析</li>
-                            <li>• 🎯 加权像素修复技术</li>
-                            <li>• ⚖️ 平衡质量与效果</li>
-                            <li>• 💎 适合大部分水印类型</li>
-                          </ul>
-                        </div>
-                        <div>
-                          <h4 className="font-medium text-orange-600 mb-1 text-xs">保守模式</h4>
-                          <ul className="text-xs space-y-1 text-gray-700">
-                            <li>• 🛡️ 高阈值检测算法</li>
-                            <li>• 🎨 温和梯度修复技术</li>
-                            <li>• 🔒 严格边缘保护机制</li>
-                            <li>• 📐 精确纹理保持算法</li>
-                            <li>• 🎯 适合精细图像处理</li>
-                          </ul>
-                        </div>
-                        <div>
-                          <h4 className="font-medium text-red-600 mb-1 text-xs">激进模式</h4>
-                          <ul className="text-xs space-y-1 text-gray-700">
-                            <li>• ⚡ 低阈值检测算法</li>
-                            <li>• 🔥 强力像素替换技术</li>
-                            <li>• 💪 多轮迭代修复机制</li>
-                            <li>• 🎯 高强度水印去除</li>
-                            <li>• ⚠️ 可能影响图像细节</li>
-                          </ul>
-                        </div>
-                      </div>
-                    </div>
-                  </PopoverContent>
-                </Popover>
-                {/* API 配置按钮 - 仅在选择AI智能填充时显示 */}
-                {processingAlgorithm === 'sd-inpainting' && (
-                  <Dialog open={isApiConfigOpen} onOpenChange={setIsApiConfigOpen}>
-                    <DialogTrigger asChild>
-                      <Button variant="outline" size="sm" className="h-8 w-8 p-0">
-                        <Settings className="h-4 w-4" />
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent className="sm:max-w-[425px]">
-                      <DialogHeader>
-                        <DialogTitle>配置 AI 智能填充 API</DialogTitle>
-                        <DialogDescription>
-                          请输入您的 Stable Diffusion API 密钥以使用 AI 智能填充功能
-                        </DialogDescription>
-                      </DialogHeader>
-                      <div className="grid gap-4 py-4">
-                        <div className="grid grid-cols-4 items-center gap-4">
-                          <label htmlFor="api-key" className="text-right text-sm font-medium">
-                            API 密钥
-                          </label>
-                          <input
-                            id="api-key"
-                            type="password"
-                            value={sdApiKey}
-                            onChange={(e) => setSdApiKey(e.target.value)}
-                            className="col-span-3 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            placeholder="输入您的 API 密钥"
-                          />
-                        </div>
-                        <div className="text-xs text-gray-500 mt-2">
-                          <p>• API 密钥将保存在本地存储中</p>
-                          <p>• 如需获取 API 密钥，请访问相关服务提供商</p>
-                        </div>
-                      </div>
-                      <div className="flex justify-end space-x-2">
-                        <Button variant="outline" onClick={() => setIsApiConfigOpen(false)}>
-                          取消
-                        </Button>
-                        <Button onClick={() => {
-                          localStorage.setItem('sd-api-key', sdApiKey);
-                          setIsApiConfigOpen(false);
-                          toast.success('API 密钥已保存', { duration: 1000 });
-                        }}>
-                          保存
-                        </Button>
-                      </div>
-                    </DialogContent>
-                  </Dialog>
-                )}
-              </div>
-            </div>
-          </div>
-          
-          {/* 图片列表 */}
-          <ScrollArea className="flex-1 pt-3">
-            <div className="space-y-2">
-              {images.map(image => <div key={image.id} className={`flex items-center justify-between p-3 border rounded-md cursor-pointer transition-colors ${selectedImageId === image.id ? 'bg-blue-50 border-blue-200' : 'hover:bg-gray-50'}`} onClick={() => handleImageListClick(image.id)}>
-                  <div className="flex-1 min-w-0">
-                    <span className="text-sm truncate block" title={image.file.name}>
-                      {image.file.name}
-                    </span>
-                    <span className="text-xs text-gray-500">
-                      {image.processedUrl ? `已处理${image.processCount}次` : '未处理'}
-                      {image.watermarkMark ? (image.isMarkingCompleted ? ' • 已完成标记' : ' • 已标记未确认') : ' • 未标记'}
-                      {isBatchProcessing && batchProgress[image.id] !== undefined && (
-                        <>
-                          {batchProgress[image.id] === -1 ? ' • 处理失败' : 
-                           batchProgress[image.id] === 100 ? ' • 处理完成' : 
-                           ` • 处理中 ${batchProgress[image.id]}%`}
-                        </>
-                      )}
-                    </span>
-                  </div>
-                  <div className="flex items-center space-x-2 ml-2 flex-shrink-0">
-                    {renderProcessButton(image, true)}
-                    <Button variant="outline" size="sm" onClick={e => {
-                      e.stopPropagation();
-                      handleRemoveImage(image.id);
-                    }} className="text-xs" disabled={isBatchProcessing}>
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
-                  </div>
-                </div>)}
-            </div>
-          </ScrollArea>
-        </div>
-      </div>
-
-      {/* Main Content Area */}
-      <div className="flex-1 flex flex-col bg-gray-50 min-w-0">
-        <div className="p-4 bg-white border-b flex-shrink-0">
-          <div className="flex flex-col space-y-3">
-            {/* Smart Layout: Title and Buttons */}
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-lg font-semibold whitespace-nowrap">图片处理结果</h2>
-              
-              <div className="flex items-center gap-2">
-                {isBatchProcessing && (
-                  <div className="flex items-center space-x-2 whitespace-nowrap">
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
-                    <span className="text-sm text-gray-600">批量处理中...</span>
-                  </div>
-                )}
-                
-                {/* Action Buttons */}
-                {selectedImage && (
-                  <div className="flex flex-wrap items-center gap-2 min-w-0">
-                    <Button variant={isMarkingMode ? "default" : "outline"} size="sm" onClick={() => {
-                      if (isMarkingMode) {
-                        // 如果当前在标记模式，点击相当于完成标记
-                        if (selectedImage.watermarkMark) {
-                          handleCompleteMarking(selectedImage.id);
-                        } else {
-                          setIsMarkingMode(false);
-                          setSelectedMark(false);
-                        }
-                      } else {
-                        // 如果不在标记模式，开始标记
-                        setIsMarkingMode(true);
-                        setSelectedMark(false);
-                        // 如果开始新的标记，重置完成状态
-                        if (selectedImage.isMarkingCompleted) {
-                          setImages(prevImages => prevImages.map(img => 
-                            img.id === selectedImage.id ? { ...img, isMarkingCompleted: false } : img
-                          ));
-                        }
-                      }
-                    }} className="text-xs whitespace-nowrap" disabled={isBatchProcessing}>
-                      <MapPin className="h-3 w-3 mr-1" />
-                      {isMarkingMode ? '完成标记' : (selectedImage.isMarkingCompleted ? '重新标记' : '标记水印')}
-                    </Button>
-                    {selectedImage.watermarkMark && (
-                      <Button variant="outline" size="sm" onClick={() => clearWatermarkMark(selectedImage.id)} className="text-xs whitespace-nowrap" disabled={isBatchProcessing}>
-                        清除标记
-                      </Button>
-                    )}
-                    {selectedImage.watermarkMark && selectedImage.isMarkingCompleted && (
-                      <Button variant="outline" size="sm" onClick={handleBatchApplyWatermark} className="text-xs whitespace-nowrap" disabled={isBatchProcessing}>
-                        <Copy className="h-3 w-3 mr-1" />
-                        批量应用
-                      </Button>
-                    )}
-                    {selectedImage.processedUrl && (
-                      <Button variant="outline" size="sm" onClick={() => restoreToOriginal(selectedImage.id)} className="text-xs whitespace-nowrap" disabled={isBatchProcessing}>
-                        <Undo2 className="h-3 w-3 mr-1" />
-                        还原原图
-                      </Button>
-                    )}
-                    {renderProcessButton(selectedImage)}
-                    <Button variant="outline" size="sm" onClick={() => handleDownload(selectedImage)} className="text-xs whitespace-nowrap" disabled={isBatchProcessing}>
-                      <Download className="h-3 w-3 mr-1" />
-                      下载
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={handleBatchDownload} className="text-xs whitespace-nowrap" disabled={isBatchProcessing}>
-                      <Download className="h-3 w-3 mr-1" />
-                      批量下载
-                    </Button>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-        
-        {selectedImage ? <div className="flex-1 grid grid-cols-2 gap-4 p-4 min-h-0 overflow-hidden">
-            {/* Original Image */}
-            <div className="flex flex-col min-h-0">
-              <div className="flex items-center justify-between mb-2 flex-shrink-0">
-                <div className="flex items-center space-x-4">
-                  <span className="text-sm font-medium text-gray-600">原图</span>
-                  {isProcessing && <div className="flex items-center space-x-2">
-                      <Progress value={progress} className="w-20 h-2" />
-                      <span className="text-xs text-gray-500">{progress}%</span>
-                    </div>}
-                </div>
-                <div className="flex items-center space-x-1">
-                  <Button variant="ghost" size="sm" onClick={handleZoomOut} className="h-6 w-6 p-0">
-                    <ZoomOut className="h-3 w-3" />
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={resetZoom} className="h-6 px-2 text-xs">
-                    <RotateCcw className="h-3 w-3" />
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={handleZoomIn} className="h-6 w-6 p-0">
-                    <ZoomIn className="h-3 w-3" />
-                  </Button>
-                  <span className="text-xs text-gray-500 ml-2">{Math.round(zoom * 100)}%</span>
-                </div>
-              </div>
-              <div ref={originalScrollRef} className="flex-1 relative bg-white rounded-lg border overflow-auto min-h-0" onScroll={e => {
-            const target = e.target as HTMLDivElement;
-            syncScroll('original', target.scrollLeft, target.scrollTop);
-          }}>
-                <div className="p-4 flex items-center justify-center min-h-full">
-                  <div className="relative" style={{
-                    transform: `scale(${zoom})`,
-                    transformOrigin: 'center center'
+              {/* Algorithm Selection */}
+              <div className="flex items-center space-x-2">
+                <label className="text-sm font-medium whitespace-nowrap">处理算法</label>
+                <div className="flex items-center space-x-2 flex-1">
+                  <select value={processingAlgorithm} onChange={e => setProcessingAlgorithm(e.target.value as any)} className="flex-1 p-2 border rounded-md text-sm" style={{
+                    maxWidth: '120px'
                   }}>
-                    <img src={selectedImage.url} alt="原图" className={`block object-contain transition-transform duration-200 ease-out ${isMarkingMode ? 'cursor-crosshair' : ''}`} onMouseDown={e => handleMouseDown(e, selectedImage.id)} onMouseMove={e => handleMouseMove(e, selectedImage.id)} onMouseUp={e => handleMouseUp(e, selectedImage.id)} draggable={false} />
-                    {renderWatermarkMark(selectedImage.watermarkMark, true)}
-                    {renderDragPreview()}
-                  </div>
+                    <option value="lama">LaMa算法</option>
+                    <option value="sd-inpainting">AI智能填充</option>
+                    <option value="enhanced">增强模式</option>
+                    <option value="conservative">保守模式</option>
+                    <option value="aggressive">激进模式</option>
+                  </select>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" size="sm" className="h-8 w-8 p-0">
+                        <Info className="h-4 w-4" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-80" side="bottom" align="center">
+                      <div className="space-y-4">
+                        <div>
+                          <h4 className="font-medium text-sm mb-2">处理算法说明</h4>
+                          <p className="text-xs text-gray-600 mb-3">不同算法的特点和适用场景</p>
+                        </div>
+                        <div className="space-y-3">
+                          <div>
+                            <h4 className="font-medium text-purple-600 mb-1 text-xs">AI智能填充 (最新)</h4>
+                            <ul className="text-xs space-y-1 text-gray-700">
+                              <li>• 🧠 基于Stable Diffusion技术</li>
+                              <li>• 🎨 智能理解图像语义内容</li>
+                              <li>• ✨ 重新生成符合逻辑的细节</li>
+                              <li>• 🔍 高清纹理修复和填充</li>
+                              <li>• 🚀 适合复杂背景和精细修复</li>
+                            </ul>
+                          </div>
+                          <div>
+                            <h4 className="font-medium text-blue-600 mb-1 text-xs">LaMa算法 (推荐)</h4>
+                            <ul className="text-xs space-y-1 text-gray-700">
+                              <li>• 🎯 专业大遮罩修复技术</li>
+                              <li>• 🧠 AI智能纹理分析</li>
+                              <li>• ✨ 多尺度语义修复</li>
+                              <li>• 🎨 保持图像自然性</li>
+                              <li>• 🚀 针对标记区域优化</li>
+                            </ul>
+                          </div>
+                          <div>
+                            <h4 className="font-medium text-green-600 mb-1 text-xs">增强模式</h4>
+                            <ul className="text-xs space-y-1 text-gray-700">
+                              <li>• 📊 基于多特征检测算法</li>
+                              <li>• 🔍 智能水印置信度分析</li>
+                              <li>• 🎯 加权像素修复技术</li>
+                              <li>• ⚖️ 平衡质量与效果</li>
+                              <li>• 💎 适合大部分水印类型</li>
+                            </ul>
+                          </div>
+                          <div>
+                            <h4 className="font-medium text-orange-600 mb-1 text-xs">保守模式</h4>
+                            <ul className="text-xs space-y-1 text-gray-700">
+                              <li>• 🛡️ 高阈值检测算法</li>
+                              <li>• 🎨 温和梯度修复技术</li>
+                              <li>• 🔒 严格边缘保护机制</li>
+                              <li>• 📐 精确纹理保持算法</li>
+                              <li>• 🎯 适合精细图像处理</li>
+                            </ul>
+                          </div>
+                          <div>
+                            <h4 className="font-medium text-red-600 mb-1 text-xs">激进模式</h4>
+                            <ul className="text-xs space-y-1 text-gray-700">
+                              <li>• ⚡ 低阈值检测算法</li>
+                              <li>• 🔥 强力像素替换技术</li>
+                              <li>• 💪 多轮迭代修复机制</li>
+                              <li>• 🎯 高强度水印去除</li>
+                              <li>• ⚠️ 可能影响图像细节</li>
+                            </ul>
+                          </div>
+                        </div>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                  {/* API 配置按钮 - 仅在选择AI智能填充时显示 */}
+                  {processingAlgorithm === 'sd-inpainting' && (
+                    <Dialog open={isApiConfigOpen} onOpenChange={setIsApiConfigOpen}>
+                      <DialogTrigger asChild>
+                        <Button variant="outline" size="sm" className="h-8 w-8 p-0">
+                          <Settings className="h-4 w-4" />
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="sm:max-w-[425px]">
+                        <DialogHeader>
+                          <DialogTitle>配置 AI 智能填充 API</DialogTitle>
+                          <DialogDescription>
+                            请输入您的 Stable Diffusion API 密钥以使用 AI 智能填充功能
+                          </DialogDescription>
+                        </DialogHeader>
+                        <div className="grid gap-4 py-4">
+                          <div className="grid grid-cols-4 items-center gap-4">
+                            <label htmlFor="api-key" className="text-right text-sm font-medium">
+                              API 密钥
+                            </label>
+                            <input
+                              id="api-key"
+                              type="password"
+                              value={sdApiKey}
+                              onChange={(e) => setSdApiKey(e.target.value)}
+                              className="col-span-3 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              placeholder="输入您的 API 密钥"
+                            />
+                          </div>
+                          <div className="text-xs text-gray-500 mt-2">
+                            <p>• API 密钥将保存在本地存储中</p>
+                            <p>• 如需获取 API 密钥，请访问相关服务提供商</p>
+                          </div>
+                        </div>
+                        <div className="flex justify-end space-x-2">
+                          <Button variant="outline" onClick={() => setIsApiConfigOpen(false)}>
+                            取消
+                          </Button>
+                          <Button onClick={() => {
+                            localStorage.setItem('sd-api-key', sdApiKey);
+                            setIsApiConfigOpen(false);
+                            toast.success('API 密钥已保存', { duration: 1000 });
+                          }}>
+                            保存
+                          </Button>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                  )}
                 </div>
               </div>
             </div>
             
-            {/* Processed Image */}
-            <div className="flex flex-col min-h-0">
-              <div className="flex items-center justify-between mb-2 flex-shrink-0">
-                <span className="text-sm font-medium text-gray-600">处理后</span>
-                <div className="flex items-center space-x-1">
-                  <Button variant="ghost" size="sm" onClick={handleZoomOut} className="h-6 w-6 p-0" disabled={!selectedImage.processedUrl}>
-                    <ZoomOut className="h-3 w-3" />
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={resetZoom} className="h-6 px-2 text-xs" disabled={!selectedImage.processedUrl}>
-                    <RotateCcw className="h-3 w-3" />
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={handleZoomIn} className="h-6 w-6 p-0" disabled={!selectedImage.processedUrl}>
-                    <ZoomIn className="h-3 w-3" />
-                  </Button>
-                  <span className="text-xs text-gray-500 ml-2">{Math.round(zoom * 100)}%</span>
+            {/* 图片列表 */}
+            <ScrollArea className="flex-1 pt-3">
+              <div className="space-y-2">
+                {images.map(image => (
+                  <div key={image.id} className={`flex items-center justify-between p-3 border rounded-md cursor-pointer transition-colors ${selectedImageId === image.id ? 'bg-blue-50 border-blue-200' : 'hover:bg-gray-50'}`} onClick={() => handleImageListClick(image.id)}>
+                    <div className="flex-1 min-w-0">
+                      <span className="text-sm truncate block" title={image.file.name}>
+                        {image.file.name}
+                      </span>
+                      <span className="text-xs text-gray-500">
+                        {image.processedUrl ? `已处理${image.processCount}次` : '未处理'}
+                        {image.watermarkMark ? (image.isMarkingCompleted ? ' • 已完成标记' : ' • 已标记未确认') : ' • 未标记'}
+                        {isBatchProcessing && batchProgress[image.id] !== undefined && (
+                          <>
+                            {batchProgress[image.id] === -1 ? ' • 处理失败' : 
+                             batchProgress[image.id] === 100 ? ' • 处理完成' : 
+                             ` • 处理中 ${batchProgress[image.id]}%`}
+                          </>
+                        )}
+                      </span>
+                    </div>
+                    <div className="flex items-center space-x-2 ml-2 flex-shrink-0">
+                      {renderProcessButton(image, true)}
+                      <Button variant="outline" size="sm" onClick={e => {
+                        e.stopPropagation();
+                        handleRemoveImage(image.id);
+                      }} className="text-xs" disabled={isBatchProcessing}>
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
+          </div>
+        </div>
+
+        {/* Main Content Area */}
+        <div className="flex-1 flex flex-col bg-gray-50 min-w-0">
+          <div className="p-4 bg-white border-b flex-shrink-0">
+            <div className="flex flex-col space-y-3">
+              {/* Smart Layout: Title and Buttons */}
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-lg font-semibold whitespace-nowrap">图片处理结果</h2>
+                
+                <div className="flex items-center gap-2">
+                  {isBatchProcessing && (
+                    <div className="flex items-center space-x-2 whitespace-nowrap">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
+                      <span className="text-sm text-gray-600">批量处理中...</span>
+                    </div>
+                  )}
+                  
+                  {/* Action Buttons */}
+                  {selectedImage && (
+                    <div className="flex flex-wrap items-center gap-2 min-w-0">
+                      <Button variant={isMarkingMode ? "default" : "outline"} size="sm" onClick={() => {
+                        if (isMarkingMode) {
+                          // 如果当前在标记模式，点击相当于完成标记
+                          if (selectedImage.watermarkMark) {
+                            handleCompleteMarking(selectedImage.id);
+                          } else {
+                            setIsMarkingMode(false);
+                            setSelectedMark(false);
+                          }
+                        } else {
+                          // 如果不在标记模式，开始标记
+                          setIsMarkingMode(true);
+                          setSelectedMark(false);
+                          // 如果开始新的标记，重置完成状态
+                          if (selectedImage.isMarkingCompleted) {
+                            setImages(prevImages => prevImages.map(img => 
+                              img.id === selectedImage.id ? { ...img, isMarkingCompleted: false } : img
+                            ));
+                          }
+                        }
+                      }} className="text-xs whitespace-nowrap" disabled={isBatchProcessing}>
+                        <MapPin className="h-3 w-3 mr-1" />
+                        {isMarkingMode ? '完成标记' : (selectedImage.isMarkingCompleted ? '重新标记' : '标记水印')}
+                      </Button>
+                      {selectedImage.watermarkMark && (
+                        <Button variant="outline" size="sm" onClick={() => clearWatermarkMark(selectedImage.id)} className="text-xs whitespace-nowrap" disabled={isBatchProcessing}>
+                          清除标记
+                        </Button>
+                      )}
+                      {selectedImage.watermarkMark && selectedImage.isMarkingCompleted && (
+                        <Button variant="outline" size="sm" onClick={handleBatchApplyWatermark} className="text-xs whitespace-nowrap" disabled={isBatchProcessing}>
+                          <Copy className="h-3 w-3 mr-1" />
+                          批量应用
+                        </Button>
+                      )}
+                      {selectedImage.processedUrl && (
+                        <Button variant="outline" size="sm" onClick={() => restoreToOriginal(selectedImage.id)} className="text-xs whitespace-nowrap" disabled={isBatchProcessing}>
+                          <Undo2 className="h-3 w-3 mr-1" />
+                          还原原图
+                        </Button>
+                      )}
+                      {renderProcessButton(selectedImage)}
+                      <Button variant="outline" size="sm" onClick={() => handleDownload(selectedImage)} className="text-xs whitespace-nowrap" disabled={isBatchProcessing}>
+                        <Download className="h-3 w-3 mr-1" />
+                        下载
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={handleBatchDownload} className="text-xs whitespace-nowrap" disabled={isBatchProcessing}>
+                        <Download className="h-3 w-3 mr-1" />
+                        批量下载
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </div>
-              <div ref={processedScrollRef} className="flex-1 relative bg-white rounded-lg border overflow-auto min-h-0" onScroll={e => {
-            const target = e.target as HTMLDivElement;
-            syncScroll('processed', target.scrollLeft, target.scrollTop);
-          }}>
-                {selectedImage.processedUrl ? <div className="p-4 flex items-center justify-center min-h-full">
+            </div>
+          </div>
+          
+          {selectedImage ? <div className="flex-1 grid grid-cols-2 gap-4 p-4 min-h-0 overflow-hidden">
+              {/* Original Image */}
+              <div className="flex flex-col min-h-0">
+                <div className="flex items-center justify-between mb-2 flex-shrink-0">
+                  <div className="flex items-center space-x-4">
+                    <span className="text-sm font-medium text-gray-600">原图</span>
+                    {isProcessing && <div className="flex items-center space-x-2">
+                        <Progress value={progress} className="w-20 h-2" />
+                        <span className="text-xs text-gray-500">{progress}%</span>
+                      </div>}
+                  </div>
+                  <div className="flex items-center space-x-1">
+                    <Button variant="ghost" size="sm" onClick={handleZoomOut} className="h-6 w-6 p-0">
+                      <ZoomOut className="h-3 w-3" />
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={resetZoom} className="h-6 px-2 text-xs">
+                      <RotateCcw className="h-3 w-3" />
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={handleZoomIn} className="h-6 w-6 p-0">
+                      <ZoomIn className="h-3 w-3" />
+                    </Button>
+                    <span className="text-xs text-gray-500 ml-2">{Math.round(zoom * 100)}%</span>
+                  </div>
+                </div>
+                <div ref={originalScrollRef} className="flex-1 relative bg-white rounded-lg border overflow-auto min-h-0" onScroll={e => {
+                  const target = e.target as HTMLDivElement;
+                  syncScroll('original', target.scrollLeft, target.scrollTop);
+                }}>
+                  <div className="p-4 flex items-center justify-center min-h-full">
                     <div className="relative" style={{
                       transform: `scale(${zoom})`,
                       transformOrigin: 'center center'
                     }}>
-                      <img src={selectedImage.processedUrl} alt="处理后" className="block object-contain" draggable={false} />
+                      <img src={selectedImage.url} alt="原图" className={`block object-contain transition-transform duration-200 ease-out ${isMarkingMode ? 'cursor-crosshair' : ''}`} onMouseDown={e => handleMouseDown(e, selectedImage.id)} onMouseMove={e => handleMouseMove(e, selectedImage.id)} onMouseUp={e => handleMouseUp(e, selectedImage.id)} draggable={false} />
+                      {renderWatermarkMark(selectedImage.watermarkMark, true)}
+                      {renderDragPreview()}
                     </div>
-                  </div> : <div className="absolute inset-0 flex items-center justify-center text-gray-400 text-sm">
-                    {isProcessing ? <div className="text-center">
-                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-2"></div>
-                        <div className="text-xs">正在处理...</div>
-                      </div> : '等待处理'}
-                  </div>}
+                  </div>
+                </div>
+              </div>
+              
+              {/* Processed Image */}
+              <div className="flex flex-col min-h-0">
+                <div className="flex items-center justify-between mb-2 flex-shrink-0">
+                  <span className="text-sm font-medium text-gray-600">处理后</span>
+                  <div className="flex items-center space-x-1">
+                    <Button variant="ghost" size="sm" onClick={handleZoomOut} className="h-6 w-6 p-0" disabled={!selectedImage.processedUrl}>
+                      <ZoomOut className="h-3 w-3" />
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={resetZoom} className="h-6 px-2 text-xs" disabled={!selectedImage.processedUrl}>
+                      <RotateCcw className="h-3 w-3" />
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={handleZoomIn} className="h-6 w-6 p-0" disabled={!selectedImage.processedUrl}>
+                      <ZoomIn className="h-3 w-3" />
+                    </Button>
+                    <span className="text-xs text-gray-500 ml-2">{Math.round(zoom * 100)}%</span>
+                  </div>
+                </div>
+                <div ref={processedScrollRef} className="flex-1 relative bg-white rounded-lg border overflow-auto min-h-0" onScroll={e => {
+                  const target = e.target as HTMLDivElement;
+                  syncScroll('processed', target.scrollLeft, target.scrollTop);
+                }}>
+                  {selectedImage.processedUrl ? <div className="p-4 flex items-center justify-center min-h-full">
+                      <div className="relative" style={{
+                        transform: `scale(${zoom})`,
+                        transformOrigin: 'center center'
+                      }}>
+                        <img src={selectedImage.processedUrl} alt="处理后" className="block object-contain" draggable={false} />
+                      </div>
+                    </div> : <div className="absolute inset-0 flex items-center justify-center text-gray-400 text-sm">
+                      {isProcessing ? <div className="text-center">
+                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-2"></div>
+                          <div className="text-xs">正在处理...</div>
+                        </div> : '等待处理'}
+                    </div>}
+                </div>
+              </div>
+            </div> : <div className="flex-1 flex items-center justify-center text-gray-500">
+              <div className="text-center">
+                <p className="text-lg mb-2">请从左侧列表中选择一张图片进行处理</p>
+                <p className="text-sm text-gray-400">上传后将在此处看到图片对比</p>
               </div>
             </div>
-          </div> : <div className="flex-1 flex items-center justify-center text-gray-500">
-            <div className="text-center">
-              <p className="text-lg mb-2">请从左侧列表中选择一张图片进行处理</p>
-              <p className="text-sm text-gray-400">上传后将在此处看到图片对比</p>
-            </div>
-          </div>}
+          </div>
+          
+          {/* Batch Download Dialog */}
+          <BatchDownloadDialog
+            isOpen={isBatchDownloadOpen}
+            onClose={() => setIsBatchDownloadOpen(false)}
+            images={images}
+          />
+        </div>
       </div>
-      
-      {/* Batch Download Dialog */}
-      <BatchDownloadDialog
-        isOpen={isBatchDownloadOpen}
-        onClose={() => setIsBatchDownloadOpen(false)}
-        images={images}
-      />
-    </div>;
+    </TooltipProvider>
+  );
 };
 
 export default WatermarkRemover;
