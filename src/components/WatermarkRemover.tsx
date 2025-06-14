@@ -5,6 +5,7 @@ import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Slider } from '@/components/ui/slider';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Upload, Download, Trash2, MapPin, RefreshCw, Settings, ZoomIn, ZoomOut, RotateCcw, Undo2, Sparkles, Info } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -902,8 +903,8 @@ const WatermarkRemover = () => {
       width: `${mark.width * 100}%`,
       height: `${mark.height * 100}%`,
     }}>
-        {/* 透明矩形背景 */}
-        <div className={`absolute inset-0 ${selectedMark ? 'bg-blue-500' : 'bg-blue-500'} bg-opacity-10 transition-colors duration-200`} />
+        {/* 透明矩形背景 - 标记模式时完全透明 */}
+        <div className={`absolute inset-0 ${isMarkingMode ? 'bg-transparent' : 'bg-blue-500 bg-opacity-10'} transition-colors duration-200`} />
         
         {/* 蓝色虚线边框 */}
         <div className="absolute inset-0 border-2 border-dashed border-blue-500 rounded-sm opacity-90 transition-all duration-200" style={{
@@ -1038,45 +1039,45 @@ const WatermarkRemover = () => {
                   <option value="conservative">保守模式</option>
                   <option value="aggressive">激进模式</option>
                 </select>
-                <Dialog>
-                  <DialogTrigger asChild>
+                <Popover>
+                  <PopoverTrigger asChild>
                     <Button variant="outline" size="sm" className="h-8 w-8 p-0">
                       <Info className="h-4 w-4" />
                     </Button>
-                  </DialogTrigger>
-                  <DialogContent className="max-w-md">
-                    <DialogHeader>
-                      <DialogTitle>处理算法说明</DialogTitle>
-                      <DialogDescription>
-                        不同算法的特点和适用场景
-                      </DialogDescription>
-                    </DialogHeader>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-80" side="bottom" align="start">
                     <div className="space-y-4">
                       <div>
-                        <h4 className="font-medium text-blue-600 mb-2">LaMa算法 (推荐)</h4>
-                        <ul className="text-sm space-y-1 text-gray-700">
-                          <li>• 🎯 专业大遮罩修复技术</li>
-                          <li>• 🧠 AI智能纹理分析</li>
-                          <li>• ✨ 多尺度语义修复</li>
-                          <li>• 🎨 保持图像自然性</li>
-                          <li>• 🚀 针对标记区域优化</li>
-                        </ul>
+                        <h4 className="font-medium text-sm mb-2">处理算法说明</h4>
+                        <p className="text-xs text-gray-600 mb-3">不同算法的特点和适用场景</p>
                       </div>
-                      <div>
-                        <h4 className="font-medium text-green-600 mb-2">增强模式</h4>
-                        <p className="text-sm text-gray-700">平衡处理质量和效果，适合大部分水印</p>
-                      </div>
-                      <div>
-                        <h4 className="font-medium text-orange-600 mb-2">保守模式</h4>
-                        <p className="text-sm text-gray-700">温和处理，避免过度修复，适合精细图像</p>
-                      </div>
-                      <div>
-                        <h4 className="font-medium text-red-600 mb-2">激进模式</h4>
-                        <p className="text-sm text-gray-700">强力去除，可能影响图像质量，适合顽固水印</p>
+                      <div className="space-y-3">
+                        <div>
+                          <h4 className="font-medium text-blue-600 mb-1 text-xs">LaMa算法 (推荐)</h4>
+                          <ul className="text-xs space-y-1 text-gray-700">
+                            <li>• 🎯 专业大遮罩修复技术</li>
+                            <li>• 🧠 AI智能纹理分析</li>
+                            <li>• ✨ 多尺度语义修复</li>
+                            <li>• 🎨 保持图像自然性</li>
+                            <li>• 🚀 针对标记区域优化</li>
+                          </ul>
+                        </div>
+                        <div>
+                          <h4 className="font-medium text-green-600 mb-1 text-xs">增强模式</h4>
+                          <p className="text-xs text-gray-700">平衡处理质量和效果，适合大部分水印</p>
+                        </div>
+                        <div>
+                          <h4 className="font-medium text-orange-600 mb-1 text-xs">保守模式</h4>
+                          <p className="text-xs text-gray-700">温和处理，避免过度修复，适合精细图像</p>
+                        </div>
+                        <div>
+                          <h4 className="font-medium text-red-600 mb-1 text-xs">激进模式</h4>
+                          <p className="text-xs text-gray-700">强力去除，可能影响图像质量，适合顽固水印</p>
+                        </div>
                       </div>
                     </div>
-                  </DialogContent>
-                </Dialog>
+                  </PopoverContent>
+                </Popover>
               </div>
             </div>
           </div>
@@ -1094,12 +1095,20 @@ const WatermarkRemover = () => {
                       {image.watermarkMark && ' • 已标记'}
                     </span>
                   </div>
-                  <Button variant="outline" size="sm" onClick={e => {
-                e.stopPropagation();
-                handleRemoveWatermark(image);
-              }} disabled={isProcessing} className="ml-2 flex-shrink-0">
-                    {isProcessing && selectedImageId === image.id ? '处理中...' : image.processCount > 0 ? '继续处理' : '去水印'}
-                  </Button>
+                  <div className="flex items-center space-x-2 ml-2 flex-shrink-0">
+                    <Button variant="outline" size="sm" onClick={e => {
+                      e.stopPropagation();
+                      handleRemoveWatermark(image);
+                    }} disabled={isProcessing}>
+                      {isProcessing && selectedImageId === image.id ? '处理中...' : image.processCount > 0 ? '继续处理' : '去水印'}
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={e => {
+                      e.stopPropagation();
+                      handleRemoveImage(image.id);
+                    }} className="text-xs">
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
                 </div>)}
             </div>
           </ScrollArea>
@@ -1135,9 +1144,6 @@ const WatermarkRemover = () => {
                   <Download className="h-3 w-3 mr-1" />
                   下载
                 </Button>}
-              <Button variant="outline" size="sm" onClick={() => handleRemoveImage(selectedImage.id)} className="text-xs">
-                <Trash2 className="h-3 w-3" />
-              </Button>
             </div>}
         </div>
         
@@ -1170,11 +1176,11 @@ const WatermarkRemover = () => {
             syncScroll('original', target.scrollLeft, target.scrollTop);
           }}>
                 <div className="p-4 flex items-center justify-center min-h-full">
-                  <div className="relative">
-                    <img src={selectedImage.url} alt="原图" className={`block object-contain transition-transform duration-200 ease-out ${isMarkingMode ? 'cursor-crosshair' : ''}`} style={{
-                  transform: `scale(${zoom})`,
-                  transformOrigin: 'center center'
-                }} onMouseDown={e => handleMouseDown(e, selectedImage.id)} onMouseMove={e => handleMouseMove(e, selectedImage.id)} onMouseUp={e => handleMouseUp(e, selectedImage.id)} draggable={false} />
+                  <div className="relative" style={{
+                    transform: `scale(${zoom})`,
+                    transformOrigin: 'center center'
+                  }}>
+                    <img src={selectedImage.url} alt="原图" className={`block object-contain transition-transform duration-200 ease-out ${isMarkingMode ? 'cursor-crosshair' : ''}`} onMouseDown={e => handleMouseDown(e, selectedImage.id)} onMouseMove={e => handleMouseMove(e, selectedImage.id)} onMouseUp={e => handleMouseUp(e, selectedImage.id)} draggable={false} />
                     {renderWatermarkMark(selectedImage.watermarkMark, true)}
                     {renderDragPreview()}
                   </div>
@@ -1204,11 +1210,11 @@ const WatermarkRemover = () => {
             syncScroll('processed', target.scrollLeft, target.scrollTop);
           }}>
                 {selectedImage.processedUrl ? <div className="p-4 flex items-center justify-center min-h-full">
-                    <div className="relative">
-                      <img src={selectedImage.processedUrl} alt="处理后" className="block object-contain" style={{
-                  transform: `scale(${zoom})`,
-                  transformOrigin: 'center center'
-                }} draggable={false} />
+                    <div className="relative" style={{
+                      transform: `scale(${zoom})`,
+                      transformOrigin: 'center center'
+                    }}>
+                      <img src={selectedImage.processedUrl} alt="处理后" className="block object-contain" draggable={false} />
                     </div>
                   </div> : <div className="absolute inset-0 flex items-center justify-center text-gray-400 text-sm">
                     {isProcessing ? <div className="text-center">
