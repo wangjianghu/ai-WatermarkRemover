@@ -1,58 +1,34 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { Upload, Download, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
+import { Upload } from 'lucide-react';
 import { toast } from 'sonner';
+import { ImageComparisonRow } from './ImageComparisonRow';
 
-interface ImageItem {
+export interface ImageItem {
   id: string;
   file: File;
   url: string;
   processedUrl: string | null;
-  rotation: number;
-  dimensions?: { width: number; height: number };
 }
-
-type ZoomLevel = number;
 
 const WatermarkRemover = () => {
   const [images, setImages] = useState<ImageItem[]>([]);
   const [progress, setProgress] = useState<number>(0);
-  const [zoomLevel, setZoomLevel] = useState<ZoomLevel>(1);
-  const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
-
-  const loadImageDimensions = (file: File): Promise<{ width: number; height: number }> => {
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.onload = () => {
-        resolve({ width: img.naturalWidth, height: img.naturalHeight });
-      };
-      img.src = URL.createObjectURL(file);
-    });
-  };
+  const [processingImageId, setProcessingImageId] = useState<string | null>(null);
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (files && files.length > 0) {
-      const newImages = await Promise.all(
-        Array.from(files).map(async (file) => {
-          const dimensions = await loadImageDimensions(file);
-          return {
-            id: crypto.randomUUID(),
-            file: file,
-            url: URL.createObjectURL(file),
-            processedUrl: null,
-            rotation: 0,
-            dimensions,
-          };
-        })
-      );
+      const newImages: ImageItem[] = Array.from(files).map((file) => ({
+        id: crypto.randomUUID(),
+        file: file,
+        url: URL.createObjectURL(file),
+        processedUrl: null,
+      }));
       setImages(prevImages => [...prevImages, ...newImages]);
-      if (newImages.length > 0) {
-        setSelectedImageId(newImages[0].id);
-      }
       event.target.value = '';
     }
   };
@@ -354,6 +330,7 @@ const WatermarkRemover = () => {
     }
 
     setIsProcessing(true);
+    setProcessingImageId(imageItem.id);
     setProgress(0);
 
     try {
@@ -378,24 +355,9 @@ const WatermarkRemover = () => {
       toast.error(`水印去除失败: ${error.message}`);
     } finally {
       setIsProcessing(false);
+      setProcessingImageId(null);
       setProgress(0);
     }
-  };
-
-  const handleZoomIn = () => {
-    setZoomLevel(prevLevel => Math.min(prevLevel + 0.2, 3));
-  };
-
-  const handleZoomOut = () => {
-    setZoomLevel(prevLevel => Math.max(prevLevel - 0.2, 0.4));
-  };
-
-  const handleRotate = (imageId: string) => {
-    setImages(prevImages =>
-      prevImages.map(img =>
-        img.id === imageId ? { ...img, rotation: img.rotation + 90 } : img
-      )
-    );
   };
 
   const handleDownload = (imageItem: ImageItem) => {
@@ -412,205 +374,65 @@ const WatermarkRemover = () => {
     }
   };
 
-  const handleImageClick = (imageId: string) => {
-    setSelectedImageId(imageId);
-  };
-
-  const selectedImage = images.find(img => img.id === selectedImageId);
-
-  const calculateDisplaySize = (dimensions?: { width: number; height: number }) => {
-    if (!dimensions) return { width: 400, height: 300 };
-    
-    const maxWidth = 500;
-    const maxHeight = 400;
-    const { width, height } = dimensions;
-    
-    const aspectRatio = width / height;
-    
-    let displayWidth = maxWidth;
-    let displayHeight = maxWidth / aspectRatio;
-    
-    if (displayHeight > maxHeight) {
-      displayHeight = maxHeight;
-      displayWidth = maxHeight * aspectRatio;
-    }
-    
-    return {
-      width: displayWidth,
-      height: displayHeight
-    };
+  const handleRemoveImage = (imageId: string) => {
+    setImages(prevImages => prevImages.filter(img => img.id !== imageId));
   };
 
   return (
-    <div className="h-full flex flex-col">
-      {progress > 0 && (
-        <div className="flex-shrink-0 px-6 pt-6">
-          <Card>
-            <CardContent className="p-6">
-              <div className="w-full">
-                <Progress value={progress} />
-                <p className="text-center mt-2 text-sm text-gray-600">处理进度: {progress}%</p>
-              </div>
-            </CardContent>
-          </Card>
+    <div className="h-full flex flex-col space-y-4 p-6 overflow-hidden">
+      <Card className="flex-shrink-0 bg-white/10 backdrop-blur-lg border border-white/20">
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-white">AI智能水印去除</h2>
+            <div className="flex items-center gap-4">
+              <p className="text-sm text-white/70 hidden md:block">上传图片，立即体验魔法般的效果</p>
+              <input
+                type="file"
+                id="upload"
+                multiple
+                accept="image/*"
+                className="hidden"
+                onChange={handleFileUpload}
+                disabled={isProcessing}
+              />
+              <Button asChild disabled={isProcessing} className="bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white">
+                <label htmlFor="upload" className="flex items-center cursor-pointer">
+                  <Upload className="h-4 w-4 mr-2" />
+                  <span>上传图片</span>
+                </label>
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {isProcessing && progress > 0 && (
+        <div className="flex-shrink-0 px-4">
+          <Progress value={progress} className="w-full" />
+          <p className="text-center text-xs text-white/80 mt-1">正在处理中... {progress}%</p>
         </div>
       )}
-      
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-4 gap-6 p-6 min-h-0">
-        <Card className="flex flex-col">
-          <CardContent className="flex flex-col h-full p-4">
-            <div className="flex items-center justify-between mb-4 flex-shrink-0">
-              <h2 className="text-lg font-semibold">图片列表</h2>
-              <div>
-                <input
-                  type="file"
-                  id="upload"
-                  multiple
-                  accept="image/*"
-                  className="hidden"
-                  onChange={handleFileUpload}
-                />
-                <Button asChild disabled={isProcessing} size="sm">
-                  <label htmlFor="upload" className="flex items-center space-x-2 cursor-pointer">
-                    <Upload className="h-4 w-4" />
-                    <span>上传图片</span>
-                  </label>
-                </Button>
-              </div>
-            </div>
-            <div className="flex flex-col space-y-2 flex-1 overflow-y-auto">
-              {images.map(image => (
-                <div
-                  key={image.id}
-                  className={`flex items-center justify-between p-3 border rounded-md cursor-pointer transition-colors flex-shrink-0 ${
-                    selectedImageId === image.id ? 'bg-blue-50 border-blue-200' : 'hover:bg-gray-50'
-                  }`}
-                  onClick={() => handleImageClick(image.id)}
-                >
-                  <div className="flex-1 min-w-0">
-                    <span className="text-sm truncate block" title={image.file.name}>
-                      {image.file.name}
-                    </span>
-                    <span className="text-xs text-gray-500">
-                      {image.processedUrl ? '已处理' : '未处理'}
-                    </span>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleRemoveWatermark(image);
-                    }}
-                    disabled={isProcessing}
-                    className="ml-2 flex-shrink-0"
-                  >
-                    {isProcessing && selectedImageId === image.id ? '处理中...' : '去水印'}
-                  </Button>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
 
-        <Card className="lg:col-span-3 flex flex-col">
-          <CardContent className="flex flex-col h-full p-4">
-            <div className="flex items-center justify-between mb-4 flex-shrink-0">
-              <h2 className="text-lg font-semibold whitespace-nowrap">图片对比</h2>
-              {selectedImage && (
-                <div className="flex items-center justify-between w-full ml-8">
-                  <div className="flex-1 flex items-center justify-center space-x-2">
-                    <Button variant="outline" size="icon" onClick={handleZoomIn}>
-                      <ZoomIn className="h-4 w-4" />
-                    </Button>
-                    <Button variant="outline" size="icon" onClick={handleZoomOut}>
-                      <ZoomOut className="h-4 w-4" />
-                    </Button>
-                    <Button variant="outline" size="icon" onClick={() => handleRotate(selectedImageId!)}>
-                      <RotateCcw className="h-4 w-4" />
-                    </Button>
-                    <span className="text-sm text-gray-600">
-                      {Math.round(zoomLevel * 100)}%
-                    </span>
-                  </div>
-                  {selectedImage.processedUrl && (
-                    <Button 
-                      onClick={() => handleDownload(selectedImage)}
-                      className="flex items-center space-x-2 flex-shrink-0"
-                    >
-                      <Download className="h-4 w-4" />
-                      <span>下载处理后的图片</span>
-                    </Button>
-                  )}
-                </div>
-              )}
+      <div className="flex-1 overflow-y-auto space-y-4 -mr-4 pr-4">
+        {images.length > 0 ? (
+          images.map(image => (
+            <ImageComparisonRow
+              key={image.id}
+              image={image}
+              isProcessing={isProcessing && processingImageId === image.id}
+              onProcess={handleRemoveWatermark}
+              onDownload={handleDownload}
+              onRemove={handleRemoveImage}
+            />
+          ))
+        ) : (
+          <div className="flex items-center justify-center h-full text-white/50 border-2 border-dashed border-white/20 rounded-lg">
+            <div className="text-center">
+              <p className="text-lg mb-2">请上传图片开始使用</p>
+              <p className="text-sm text-white/40">上传后将在此处看到图片对比及处理结果</p>
             </div>
-            
-            {selectedImage ? (
-              <div className="flex-1 min-h-0">
-                <div className="grid grid-cols-2 gap-6 h-full">
-                  <div className="flex flex-col space-y-3 min-h-0">
-                    <h3 className="text-md font-semibold text-center flex-shrink-0">原始图片</h3>
-                    <div 
-                      className="border-2 border-gray-200 rounded-lg bg-gray-50 overflow-auto flex-1"
-                    >
-                      <div className="flex items-center justify-center min-h-full">
-                        <img
-                          src={selectedImage.url}
-                          alt={selectedImage.file.name}
-                          className="object-contain max-w-none"
-                          style={{
-                            transform: `rotate(${selectedImage.rotation}deg) scale(${zoomLevel})`,
-                            transformOrigin: 'center center'
-                          }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col space-y-3 min-h-0">
-                    <h3 className="text-md font-semibold text-center flex-shrink-0">处理结果</h3>
-                    <div 
-                      className="border-2 border-gray-200 rounded-lg bg-gray-50 overflow-auto flex-1"
-                    >
-                      {selectedImage.processedUrl ? (
-                        <div className="flex items-center justify-center min-h-full">
-                          <img
-                            src={selectedImage.processedUrl}
-                            alt={`处理后的 ${selectedImage.file.name}`}
-                            className="object-contain max-w-none"
-                            style={{
-                              transform: `rotate(${selectedImage.rotation}deg) scale(${zoomLevel})`,
-                              transformOrigin: 'center center'
-                            }}
-                          />
-                        </div>
-                      ) : (
-                        <div className="flex flex-col items-center justify-center h-full text-gray-500 space-y-3 p-4">
-                          <p className="text-center text-sm">请先处理图片以查看结果</p>
-                          <Button 
-                            onClick={() => handleRemoveWatermark(selectedImage)}
-                            disabled={isProcessing}
-                            size="sm"
-                          >
-                            {isProcessing ? '处理中...' : '开始去水印'}
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center justify-center flex-1 text-gray-500 border-2 border-dashed border-gray-200 rounded-lg">
-                <div className="text-center">
-                  <p className="text-lg mb-2">请上传并选择一张图片</p>
-                  <p className="text-sm text-gray-400">从左侧列表选择图片进行查看和处理</p>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+          </div>
+        )}
       </div>
     </div>
   );
