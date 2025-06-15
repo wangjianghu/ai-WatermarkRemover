@@ -1,73 +1,288 @@
-# Welcome to your Lovable project
+# AI智能水印去除工具
+## 1. 项目概述
+### 1.1 项目名称
+AI智能水印去除工具 (AI Watermark Removal Tool)
 
-## Project info
+### 1.2 项目描述
+一个基于React的前端Web应用，提供多种算法的智能水印去除功能，支持批量处理、实时预览和安全的API密钥管理。
 
-**URL**: https://lovable.dev/projects/7fee130f-e4b2-4f32-8f4c-d90e96e753b0
+### 1.3 技术栈
+前端框架: React 18 + TypeScript
+构建工具: Vite
+UI组件库: Shadcn/UI + Radix UI
+UI 组件库 : Shadcn/UI + Radix UI
+样式框架: Tailwind CSS
+状态管理: React Hooks
+路由: React Router DOM
+路由 ：React 路由
+图标: Lucide React
+图标 : Lucide Rea
+通知: Sonner
+通知 : Sonner
 
-## How can I edit this code?
+## 2. 核心功能模块
+### 2.1 文件上传模块
+功能描述
+支持多文件上传，具备完善的文件验证和安全检查机制。
 
-There are several ways of editing your application.
+实现逻辑
+文件格式验证: 仅支持图片格式（JPEG、PNG、GIF、WebP等）
+文件大小限制: 单文件最大限制，防止内存溢出
+内容安全检查: 验证文件真实性，防止恶意文件上传
+尺寸验证: 检查图片尺寸是否在允许范围内
+批量上传: 最多支持20张图片同时上传
+内存管理: 自动管理Blob URLs，防止内存泄漏
+界面交互
+点击"上传图片"按钮或拖拽文件到指定区域
+实时显示上传进度和验证状态
+显示上传成功/失败的详细信息
+支持文件列表预览和管理
+### 2.2 水印标记模块
+功能描述
+提供精确的水印区域标记功能，支持手动标记和批量应用。
 
-**Use Lovable**
+实现逻辑
+交互式标记: 鼠标拖拽创建标记区域
+可视化编辑: 支持拖拽移动、8个方向调整大小
+精确定位: 基于相对坐标系统，适配不同图片尺寸
+批量应用: 将当前图片的标记应用到其他图片
+状态管理: 区分"已标记"和"已完成标记"状态
+界面交互
+标记模式: 点击"标记水印"进入标记模式
+创建标记: 鼠标按下拖拽创建矩形选区
+编辑标记:
+点击选区内部可拖拽移动
+8个调整手柄用于改变大小
+不同方向显示对应的鼠标指针样式
+完成标记: 点击"完成标记"确认选区
+批量应用: 点击"批量应用"将标记复制到其他图片
+### 2.3 图像处理模块
+功能描述
+提供5种不同的水印去除算法，满足不同场景需求。
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/7fee130f-e4b2-4f32-8f4c-d90e96e753b0) and start prompting.
+算法实现
+#### 2.3.1 LaMa算法 (推荐)
+技术原理: 基于大遮罩修复的深度学习算法
+实现方式: 多尺度语义修复，智能纹理分析
+适用场景: 大面积水印，复杂背景
+处理流程:
+多尺度迭代修复
+纹理一致性计算
+加权像素替换
+#### 2.3.2 AI智能填充 (Stable Diffusion)
+#### 2.3.2 AI 智能填充（稳定扩散）
+技术原理: 基于Stable Diffusion Inpainting API
+技术原理 ：基于 Stable Diffusion Inpainting API
+实现方式: 云端API调用，需要用户提供API密钥
+适用场景: 高质量修复，语义理解填充
+安全措施:
+API密钥加密存储
+请求签名验证
+安全传输协议
+#### 2.3.3 增强模式
+技术原理: 多特征检测 + 加权修复
+实现方式: 智能水印置信度分析
+适用场景: 平衡质量与效果的通用处理
+#### 2.3.4 保守模式
+技术原理: 高阈值检测 + 温和修复
+实现方式: 严格边缘保护，精确纹理保持
+适用场景: 精细图像，要求保持原图细节
+#### 2.3.5 激进模式
+技术原理: 低阈值检测 + 强力修复
+实现方式: 多轮迭代，高强度像素替换
+适用场景: 顽固水印，可接受细节损失
+处理流程
+预处理: 图片格式转换，尺寸标准化
+算法选择: 根据用户选择应用对应算法
+进度监控: 实时显示处理进度
+后处理: 结果优化，格式转换
+内存管理: 及时释放临时资源
+#### 2.4 批量处理模块
+功能描述
+支持多张图片的批量水印去除，提供详细的进度监控。
 
-Changes made via Lovable will be committed automatically to this repo.
+实现逻辑
+并发控制: 避免同时处理过多图片导致性能问题
+进度追踪: 每张图片独立的进度显示
+错误处理: 单张图片失败不影响其他图片处理
+结果统计: 显示成功/失败数量统计
+界面交互
+批量处理按钮显示可处理图片数量
+实时显示每张图片的处理状态
+支持处理过程中的状态查看
+完成后显示详细统计结果
+### 2.5 图片对比预览模块
+功能描述
+提供原图与处理后图片的并排对比预览功能。
 
-**Use your preferred IDE**
+实现逻辑
+同步缩放: 左右两个预览区域同步缩放
+同步滚动: 保持两个预览区域的滚动同步
+缩放控制: 支持0.1x到5x的缩放范围
+性能优化: 大图片的渐进式加载
+界面交互
+缩放控制: 放大、缩小、重置按钮
+缩放显示: 实时显示当前缩放比例
+滚动同步: 任一侧滚动，另一侧自动跟随
+全屏查看: 支持全屏模式查看对比效果
+### 2.6 下载管理模块
+功能描述
+提供单张和批量下载功能，支持多种下载选项。
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+实现逻辑
+单张下载: 直接下载已处理的图片
+批量下载: 打包下载所有已处理图片
+文件命名: 自动添加处理标识前缀
+格式保持: 保持原始图片格式
+界面交互
+单张图片下载按钮
+批量下载对话框
+下载进度提示
+下载完成确认
+## 3. 安全功能模块
+### 3.1 API密钥管理
+安全措施
+加密存储: API密钥经过加密后存储
+会话级别: 密钥仅在当前会话有效
+验证机制: 使用前验证密钥有效性
+安全传输: HTTPS加密传输
+实现逻辑
+用户输入API密钥
+客户端验证密钥格式
+发送验证请求到API服务
+验证成功后加密存储
+使用时解密并添加到请求头
+### 3.2 文件安全验证
+验证层级
+基础验证: 文件类型、大小、扩展名
+内容验证: 文件头魔数验证
+安全扫描: 恶意内容检测
+尺寸验证: 图片尺寸合理性检查
+### 3.3 运行时保护
+保护机制
+调试器检测: 检测开发者工具
+代码混淆: 关键逻辑混淆保护
+请求签名: API请求签名验证
+错误处理: 安全的错误信息显示
+## 4. 用户界面设计
+### 4.1 整体布局
+布局结构
+┌─────────────────────────────────────────┐
+│                Header                   │
+├─────────────┬───────────────────────────┤
+│             │         Toolbar          │
+│   Sidebar   ├───────────────────────────┤
+│             │                          │
+│             │      Image Grid          │
+│             │   (Original | Processed) │
+│             │                          │
+└─────────────┴───────────────────────────┘
+### 4.2 侧边栏 (Sidebar)
+功能区域
+文件上传区: 上传按钮和拖拽区域
+算法选择区: 下拉选择框和配置按钮
+图片列表区: 滚动列表显示所有图片
+批量操作区: 批量处理和批量应用按钮
+交互特性
+响应式设计，适配不同屏幕尺寸
+图片列表支持滚动和选择
+实时显示图片处理状态
+支持单张图片的快速操作
+### 4.3 工具栏 (Toolbar)
+功能按钮
+标记控制: 标记水印、完成标记、清除标记
+批量操作: 批量应用标记
+图片操作: 还原原图、下载图片
+批量下载: 打包下载所有处理结果
+状态显示
+当前选中图片信息
+批量处理进度指示器
+操作状态反馈
+### 4.4 图片网格 (ImageGrid)
+双面板设计
+左面板: 原图显示和水印标记
+右面板: 处理结果显示
+交互功能
+缩放控制: 放大、缩小、重置
+同步操作: 两个面板同步缩放和滚动
+标记编辑: 在原图上进行水印标记
+进度显示: 处理过程中的进度条
+## 5. 数据流程
+### 5.1 文件上传流程
+用户选择文件 → 文件验证 → 创建ImageItem → 添加到状态 → UI更新
+### 5.2 水印标记流程
+进入标记模式 → 鼠标交互 → 创建标记区域 → 确认标记 → 状态更新
+### 5.3 图像处理流程
+选择算法 → 验证标记 → 调用处理函数 → 生成结果 → 更新预览
+### 5.4 批量处理流程
+筛选已标记图片 → 逐个处理 → 进度更新 → 结果统计 → 完成通知
+## 6. 状态管理
+### 6.1 核心状态结构
+ImageItem类型  ImageItem 类型
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
-```
-
-**Edit a file directly in GitHub**
-
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
-
-**Use GitHub Codespaces**
-
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
-
-## What technologies are used for this project?
-
-This project is built with:
-
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
-
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/7fee130f-e4b2-4f32-8f4c-d90e96e753b0) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+interface ImageItem {
+  id: string;                    // 唯一标识
+  file: File;                   // 原始文件
+  url: string;                  // 预览URL
+  processedUrl: string | null;  // 处理结果URL
+  rotation: number;             // 旋转角度
+  dimensions?: {                // 图片尺寸
+    width: number;
+    height: number;
+  };
+  watermarkMark?: WatermarkMark; // 水印标记
+  processCount: number;         // 处理次数
+  isMarkingCompleted: boolean;  // 标记完成状态
+}
+### 6.2 状态管理Hook
+useImageState
+管理图片列表和选中状态
+提供增删改查操作
+处理内存清理
+useWatermarkMarking  useWatermark 标记
+管理水印标记交互
+处理鼠标事件和拖拽逻辑
+控制标记模式状态
+useImageProcessing  使用图像处理
+管理图像处理状态
+控制处理进度和算法选择
+处理批量操作逻辑
+## 7. 性能优化
+### 7.1 内存管理
+自动释放Blob URLs
+清理Canvas资源
+控制并发处理数量
+### 7.2 UI响应性
+使用React.memo优化渲染
+合理的状态分离
+异步处理耗时操作
+### 7.3 文件处理优化
+图片尺寸限制
+渐进式加载
+压缩和格式优化
+## 8. 错误处理与用户反馈
+### 8.1 错误分类
+用户操作错误: 文件格式不支持、未标记水印等
+网络错误: API调用失败、网络超时
+系统错误: 内存不足、处理异常
+### 8.2 反馈机制
+Toast通知: 及时的操作反馈
+进度指示: 长时间操作的进度显示
+状态标识: 图片处理状态的可视化标识
+### 8.3 错误恢复
+重试机制: 支持操作重试
+状态回滚: 失败时恢复到之前状态
+优雅降级: 功能不可用时的替代方案
+## 9. 扩展性设计
+### 9.1 算法扩展
+插件化的算法架构
+统一的处理接口
+配置化的算法参数
+### 9.2 功能扩展
+模块化的组件设计
+Hook的可复用性
+类型安全的接口定义
+## 9.3 国际化支持
+多语言文本管理
+本地化的用户界面
+文化差异的适配
