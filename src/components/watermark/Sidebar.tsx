@@ -4,7 +4,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Upload, Play, Info, Settings, Trash2, CheckCircle, XCircle, Loader2 } from 'lucide-react';
-import { ImageItem } from './types';
+import { ImageItem, ProcessingAlgorithm } from './types';
 import ProcessButton from './ProcessButton';
 import { toast } from 'sonner';
 import { validateApiKey, sanitizeInput } from '@/utils/apiSecurity';
@@ -13,7 +13,7 @@ import { secureApiClient } from '@/utils/secureApiClient';
 interface SidebarProps {
   images: ImageItem[];
   selectedImageId: string | null;
-  processingAlgorithm: string;
+  processingAlgorithm: ProcessingAlgorithm;
   isProcessing: boolean;
   isBatchProcessing: boolean;
   batchProgress: { [key: string]: number };
@@ -21,7 +21,7 @@ interface SidebarProps {
   isApiConfigOpen: boolean;
   onFileUpload: (event: React.ChangeEvent<HTMLInputElement>) => void;
   onBatchProcess: () => void;
-  onAlgorithmChange: (value: string) => void;
+  onAlgorithmChange: (value: ProcessingAlgorithm) => void;
   onImageSelect: (id: string) => void;
   onRemoveImage: (id: string) => void;
   setSdApiKey: (key: string) => void;
@@ -137,7 +137,12 @@ const Sidebar: React.FC<SidebarProps> = ({
           <div className="flex items-center space-x-2">
             <label className="text-sm font-medium whitespace-nowrap">处理算法</label>
             <div className="flex items-center space-x-2 flex-1">
-              <select value={processingAlgorithm} onChange={e => onAlgorithmChange(e.target.value)} className="flex-1 p-2 border rounded-md text-sm" style={{ maxWidth: '120px' }}>
+              <select 
+                value={processingAlgorithm} 
+                onChange={e => onAlgorithmChange(e.target.value as ProcessingAlgorithm)} 
+                className="flex-1 p-2 border rounded-md text-sm" 
+                style={{ maxWidth: '120px' }}
+              >
                 <option value="lama">LaMa算法</option>
                 <option value="sd-inpainting">AI智能填充</option>
                 <option value="enhanced">增强模式</option>
@@ -145,7 +150,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 <option value="aggressive">激进模式</option>
               </select>
               
-              {/* ... keep existing code (algorithm info popover) */}
+              {/* ... keep existing code (algorithm info popover and API config dialog) */}
               <Popover>
                 <PopoverTrigger asChild><Button variant="outline" size="sm" className="h-8 w-8 p-0"><Info className="h-4 w-4" /></Button></PopoverTrigger>
                 <PopoverContent className="w-80" side="bottom" align="center">
