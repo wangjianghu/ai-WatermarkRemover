@@ -6,7 +6,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Slider } from '@/components/ui/slider';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Upload, Download, Trash2, MapPin, RefreshCw, Settings, ZoomIn, ZoomOut, RotateCcw, Undo2, Sparkles, Info, Copy, Play, Ban } from 'lucide-react';
 import { toast } from 'sonner';
 import BatchDownloadDialog from './BatchDownloadDialog';
@@ -1295,21 +1295,22 @@ const WatermarkRemover = () => {
 
   // Render process button with disabled state and tooltip
   const renderProcessButton = (imageItem: ImageItem, isListItem: boolean = false) => {
-    const isDisabled = isProcessing || isBatchProcessing || !imageItem.watermarkMark || !imageItem.isMarkingCompleted;
+    const isTaskRunning = isProcessing || isBatchProcessing;
     const needsMarking = !imageItem.watermarkMark;
     const needsCompletion = imageItem.watermarkMark && !imageItem.isMarkingCompleted;
-    const isTaskRunning = isProcessing || isBatchProcessing;
+    const isDisabled = isTaskRunning || needsMarking || needsCompletion;
     
-    let tooltipText = "";
+    // Determine tooltip message based on priority
+    let tooltipMessage = "";
     if (needsMarking) {
-      tooltipText = "请先标记水印位置";
+      tooltipMessage = "请先标记水印位置";
     } else if (needsCompletion) {
-      tooltipText = "请先确认完成水印标记";
+      tooltipMessage = "请先确认完成水印标记";
     } else if (isTaskRunning) {
-      tooltipText = "请等待当前任务完成";
+      tooltipMessage = "请等待当前任务完成";
     }
 
-    const buttonContent = (
+    const button = (
       <Button 
         variant="outline" 
         size="sm" 
@@ -1320,28 +1321,26 @@ const WatermarkRemover = () => {
         disabled={isDisabled}
         className={`text-xs ${isDisabled ? 'cursor-not-allowed' : ''}`}
       >
-        {(isProcessing || isBatchProcessing) && selectedImageId === imageItem.id ? '处理中...' : 
+        {isTaskRunning && selectedImageId === imageItem.id ? '处理中...' : 
          imageItem.processCount > 0 ? '继续处理' : '去水印'}
       </Button>
     );
 
-    // Always show tooltip when button is disabled and there's a tooltip message
-    if (isDisabled && tooltipText) {
+    // If button is disabled and has a tooltip message, wrap with tooltip
+    if (isDisabled && tooltipMessage) {
       return (
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              {buttonContent}
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>{tooltipText}</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            {button}
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>{tooltipMessage}</p>
+          </TooltipContent>
+        </Tooltip>
       );
     }
 
-    return buttonContent;
+    return button;
   };
 
   return (
