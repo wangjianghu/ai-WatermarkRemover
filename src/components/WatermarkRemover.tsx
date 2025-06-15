@@ -9,6 +9,8 @@ import ImageGrid from './watermark/ImageGrid';
 
 import { ImageItem, WatermarkMark, DragState, ResizeState, ResizeHandle, ProcessingAlgorithm } from './watermark/types';
 import { processImageCanvas } from './watermark/imageProcessor';
+import { validateFileUpload, validateImageDimensions } from '@/utils/apiSecurity';
+import { memoryManager } from '@/utils/memoryManager';
 
 const WatermarkRemover = () => {
   const [images, setImages] = useState<ImageItem[]>([]);
@@ -33,29 +35,93 @@ const WatermarkRemover = () => {
     }
   }, [images, selectedImageId]);
 
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      memoryManager.cleanup();
+    };
+  }, []);
+
   const loadImageDimensions = (file: File): Promise<{ width: number, height: number }> => {
-    return new Promise(resolve => {
+    return new Promise((resolve, reject) => {
       const img = new Image();
-      img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
-      img.src = URL.createObjectURL(file);
+      img.onload = () => {
+        const validation = validateImageDimensions(img.naturalWidth, img.naturalHeight);
+        if (!validation.isValid) {
+          reject(new Error(validation.error));
+          return;
+        }
+        resolve({ width: img.naturalWidth, height: img.naturalHeight });
+      };
+      img.onerror = () => reject(new Error('无法加载图片'));
+      const url = URL.createObjectURL(file);
+      memoryManager.trackBlobUrl(url);
+      img.src = url;
     });
   };
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
-    if (files && files.length > 0) {
-      const newImages = await Promise.all(Array.from(files).map(async file => ({
-        id: crypto.randomUUID(),
-        file,
-        url: URL.createObjectURL(file),
-        processedUrl: null,
-        rotation: 0,
-        dimensions: await loadImageDimensions(file),
-        watermarkMark: undefined,
-        processCount: 0,
-        isMarkingCompleted: false,
-      } as ImageItem)));
-      setImages(prev => [...prev, ...newImages]);
+    if (!files || files.length === 0) return;
+
+    // Validate files
+    const validFiles: File[] = [];
+    for (const file of Array.from(files)) {
+      const validation = validateFileUpload(file);
+      if (validation.isValid) {
+        validFiles.push(file);
+      } else {
+        toast.error(`${file.name}: ${validation.error}`, { duration: 3000 });
+      }
+    }
+
+    if (validFiles.length === 0) {
+      event.target.value = '';
+      return;
+    }
+
+    // Limit total number of images
+    const maxImages = 20;
+    if (images.length + validFiles.length > maxImages) {
+      toast.error(`最多只能上传 ${maxImages} 张图片`, { duration: 2000 });
+      event.target.value = '';
+      return;
+    }
+
+    try {
+      const newImages = await Promise.all(validFiles.map(async file => {
+        try {
+          const dimensions = await loadImageDimensions(file);
+          const url = URL.createObjectURL(file);
+          memoryManager.trackBlobUrl(url);
+          
+          return {
+            id: crypto.randomUUID(),
+            file,
+            url,
+            processedUrl: null,
+            rotation: 0,
+            dimensions,
+            watermarkMark: undefined,
+            processCount: 0,
+            isMarkingCompleted: false,
+          } as ImageItem;
+        } catch (error: any) {
+          toast.error(`${file.name}: ${error.message}`, { duration: 2000 });
+          return null;
+        }
+      }));
+
+      const validImages = newImages.filter(img => img !== null) as ImageItem[];
+      setImages(prev => [...prev, ...validImages]);
+      
+      if (validImages.length > 0) {
+        toast.success(`成功上传 ${validImages.length} 张图片`, { duration: 1000 });
+      }
+    } catch (error: any) {
+      console.error('File upload error:', error);
+      toast.error('上传图片时发生错误', { duration: 2000 });
+    } finally {
       event.target.value = '';
     }
   };
@@ -210,6 +276,10 @@ const WatermarkRemover = () => {
   };
 
   const restoreToOriginal = (imageId: string) => {
+    const image = images.find(img => img.id === imageId);
+    if (image?.processedUrl) {
+      memoryManager.releaseBlobUrl(image.processedUrl);
+    }
     setImages(prev => prev.map(img => img.id === imageId ? { ...img, processedUrl: null, processCount: 0, watermarkMark: undefined, isMarkingCompleted: false } : img));
     setSelectedMark(false);
     toast.success("已还原到原图状态", { duration: 800 });
@@ -244,7 +314,15 @@ const WatermarkRemover = () => {
       const processedBlob = await processImageCanvas(imageItem.file, imageItem.watermarkMark, processingAlgorithm, imageItem.processedUrl || undefined);
       clearInterval(progressInterval);
       setProgress(100);
+      
+      // Clean up old processed URL
+      if (imageItem.processedUrl) {
+        memoryManager.releaseBlobUrl(imageItem.processedUrl);
+      }
+      
       const processedUrl = URL.createObjectURL(processedBlob);
+      memoryManager.trackBlobUrl(processedUrl);
+      
       setImages(prev => prev.map(img => img.id === imageItem.id ? { ...img, processedUrl, processCount: img.processCount + 1 } : img));
       toast.success(`图片处理完成！${imageItem.processCount > 0 ? '继续优化' : '水印已去除'}`, { duration: 1500 });
     } catch (error: any) {
@@ -278,7 +356,15 @@ const WatermarkRemover = () => {
           const processedBlob = await processImageCanvas(imageItem.file, imageItem.watermarkMark, processingAlgorithm, imageItem.processedUrl || undefined);
           clearInterval(progressInterval);
           setBatchProgress(prev => ({ ...prev, [imageItem.id]: 100 }));
+          
+          // Clean up old processed URL
+          if (imageItem.processedUrl) {
+            memoryManager.releaseBlobUrl(imageItem.processedUrl);
+          }
+          
           const processedUrl = URL.createObjectURL(processedBlob);
+          memoryManager.trackBlobUrl(processedUrl);
+          
           setImages(prev => prev.map(img => img.id === imageItem.id ? { ...img, processedUrl, processCount: img.processCount + 1 } : img));
           console.log(`批量处理进度: ${i + 1}/${imagesToProcess.length} - ${imageItem.file.name}`);
         } catch (error: any) {
@@ -354,6 +440,17 @@ const WatermarkRemover = () => {
   
   const handleRemoveImage = (imageId: string) => {
     setImages(prev => {
+      const imageToRemove = prev.find(img => img.id === imageId);
+      if (imageToRemove) {
+        // Clean up blob URLs
+        if (imageToRemove.url) {
+          memoryManager.releaseBlobUrl(imageToRemove.url);
+        }
+        if (imageToRemove.processedUrl) {
+          memoryManager.releaseBlobUrl(imageToRemove.processedUrl);
+        }
+      }
+      
       const newImages = prev.filter(img => img.id !== imageId);
       if (selectedImageId === imageId) {
         setSelectedImageId(newImages.length > 0 ? newImages[0].id : null);

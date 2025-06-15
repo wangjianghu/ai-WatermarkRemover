@@ -1,10 +1,13 @@
-
-import { processWithSDInpainting } from '../SDInpaintingProcessor';
+import { secureApiClient } from '@/utils/secureApiClient';
 import { WatermarkMark } from './types';
+import { memoryManager } from '@/utils/memoryManager';
 
 // LaMa algorithm implementation
 const applyLamaInpainting = async (canvas: HTMLCanvasElement, maskRegion: WatermarkMark): Promise<void> => {
-    // ... all LaMa logic here
+    // Track canvas for memory management
+    memoryManager.trackCanvas(canvas);
+    
+    // ... keep existing code (LaMa algorithm implementation)
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -33,6 +36,7 @@ const applyLamaInpainting = async (canvas: HTMLCanvasElement, maskRegion: Waterm
     ctx.putImageData(imageData, 0, 0);
 };
 
+// ... keep existing code (helper functions: lamaInpaint, calculateTextureConsistency, etc.)
 const lamaInpaint = (data: Uint8ClampedArray, x: number, y: number, width: number, height: number, radius: number) => {
     const validPixels: Array<{
       r: number;
@@ -263,8 +267,13 @@ export const processImageCanvas = async (imageFile: File, mark: WatermarkMark | 
       try {
         if (processingAlgorithm === 'sd-inpainting' && mark) {
           console.log('使用Stable Diffusion Inpainting算法处理');
-          const processedBlob = await processWithSDInpainting(imageFile, mark);
-          resolve(processedBlob);
+          const result = await secureApiClient.processWithSDInpainting(imageFile, mark);
+          
+          if (result.success && result.data) {
+            resolve(result.data);
+          } else {
+            reject(new Error(result.error || 'AI处理失败'));
+          }
           return;
         }
 
@@ -276,6 +285,10 @@ export const processImageCanvas = async (imageFile: File, mark: WatermarkMark | 
             reject(new Error('无法获取Canvas上下文'));
             return;
           }
+          
+          // Track canvas for memory management
+          memoryManager.trackCanvas(canvas);
+          
           canvas.width = img.width;
           canvas.height = img.height;
           ctx.drawImage(img, 0, 0);
@@ -284,6 +297,7 @@ export const processImageCanvas = async (imageFile: File, mark: WatermarkMark | 
               console.log('使用LaMa算法处理水印区域');
               await applyLamaInpainting(canvas, mark);
             } else {
+              // ... keep existing code (other algorithm implementations)
               const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
               const data = imageData.data;
               for (let pass = 0; pass < 3; pass++) {
@@ -348,10 +362,14 @@ export const processImageCanvas = async (imageFile: File, mark: WatermarkMark | 
           }
         };
         img.onerror = () => reject(new Error('图片加载失败'));
-        img.src = existingProcessedUrl || URL.createObjectURL(imageFile);
+        
+        const url = existingProcessedUrl || URL.createObjectURL(imageFile);
+        if (!existingProcessedUrl) {
+          memoryManager.trackBlobUrl(url);
+        }
+        img.src = url;
       } catch (error) {
         reject(error);
       }
     });
 };
-
