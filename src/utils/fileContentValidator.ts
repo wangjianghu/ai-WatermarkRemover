@@ -152,4 +152,3 @@ export const validateCanvasOperation = (
   
   return { isValid: true };
 };
-

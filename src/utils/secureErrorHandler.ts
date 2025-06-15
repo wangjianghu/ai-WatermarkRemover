@@ -170,4 +170,3 @@ export const handleSecureError = (
   const secureError = secureErrorHandler.handleError(error, context, severity);
   return secureError.userMessage;
 };
-
