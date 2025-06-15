@@ -50,7 +50,7 @@ class SecurityHeadersManager {
   }
   
   private setContentSecurityPolicy(): void {
-    // Enhanced CSP with nonce support and stricter policies
+    // React-compatible CSP without Trusted Types requirement for development
     const cspDirectives = [
       "default-src 'self'",
       `script-src 'self' 'nonce-${this.nonce}' 'strict-dynamic'`,
@@ -65,8 +65,8 @@ class SecurityHeadersManager {
       "form-action 'self'",
       "frame-ancestors 'none'",
       "upgrade-insecure-requests",
-      "block-all-mixed-content",
-      "require-trusted-types-for 'script'"
+      "block-all-mixed-content"
+      // Removed require-trusted-types-for to allow React to work properly
     ].join('; ');
     
     const existingCSP = document.querySelector('meta[http-equiv="Content-Security-Policy"]');
@@ -76,7 +76,7 @@ class SecurityHeadersManager {
       meta.setAttribute('content', cspDirectives);
       document.head.appendChild(meta);
       
-      console.info('[Security] Enhanced Content Security Policy applied');
+      console.info('[Security] React-compatible Content Security Policy applied');
     }
   }
   
@@ -247,7 +247,7 @@ class SecurityHeadersManager {
     
     // Report to security monitor
     import('./securityMonitor').then(({ securityMonitor }) => {
-      securityMonitor.logEvent('xss_attempt', 'critical', violation);
+      securityMonitor.logEvent('xss_attempt', 'high', violation);
     });
   }
   

@@ -1,4 +1,3 @@
-
 // Enhanced memory management and resource monitoring
 interface MemoryStats {
   used: number;
@@ -21,6 +20,8 @@ class EnhancedMemoryManager {
   private resourceLimits: ResourceLimits;
   private memoryCheckInterval: number | null = null;
   private cleanupHandlers: (() => void)[] = [];
+  private trackedBlobUrls: Set<string> = new Set();
+  private trackedCanvases: Set<HTMLCanvasElement> = new Set();
   
   private constructor() {
     this.resourceLimits = {
@@ -120,6 +121,67 @@ class EnhancedMemoryManager {
     return true;
   }
   
+  trackBlobUrl(url: string): void {
+    this.trackedBlobUrls.add(url);
+    console.log('[Memory] Tracking blob URL:', url);
+  }
+  
+  releaseBlobUrl(url: string): void {
+    if (this.trackedBlobUrls.has(url)) {
+      URL.revokeObjectURL(url);
+      this.trackedBlobUrls.delete(url);
+      console.log('[Memory] Released blob URL:', url);
+    }
+  }
+  
+  trackCanvas(canvas: HTMLCanvasElement): void {
+    this.trackedCanvases.add(canvas);
+    console.log('[Memory] Tracking canvas:', canvas.width, 'x', canvas.height);
+  }
+  
+  releaseCanvas(canvas: HTMLCanvasElement): void {
+    if (this.trackedCanvases.has(canvas)) {
+      // Clear the canvas
+      canvas.width = 1;
+      canvas.height = 1;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.clearRect(0, 0, 1, 1);
+      }
+      this.trackedCanvases.delete(canvas);
+      console.log('[Memory] Released canvas');
+    }
+  }
+  
+  cleanup(): void {
+    console.info('[Memory] Performing general cleanup');
+    
+    // Release all tracked blob URLs
+    this.trackedBlobUrls.forEach(url => {
+      URL.revokeObjectURL(url);
+    });
+    this.trackedBlobUrls.clear();
+    
+    // Release all tracked canvases
+    this.trackedCanvases.forEach(canvas => {
+      this.releaseCanvas(canvas);
+    });
+    
+    // Run registered cleanup handlers
+    this.cleanupHandlers.forEach(handler => {
+      try {
+        handler();
+      } catch (error) {
+        console.error('[Memory] Cleanup handler failed:', error);
+      }
+    });
+    
+    // Force garbage collection if available
+    if ('gc' in window && typeof (window as any).gc === 'function') {
+      (window as any).gc();
+    }
+  }
+  
   private startMemoryMonitoring(): void {
     this.memoryCheckInterval = window.setInterval(() => {
       const stats = this.getMemoryStats();
@@ -207,8 +269,12 @@ class EnhancedMemoryManager {
   }
   
   private cleanupBlobUrls(): void {
-    // This is a placeholder - in a real implementation, you'd track blob URLs
-    console.info('[Memory] Cleaning up blob URLs');
+    // Clean up tracked blob URLs
+    this.trackedBlobUrls.forEach(url => {
+      URL.revokeObjectURL(url);
+    });
+    this.trackedBlobUrls.clear();
+    console.info('[Memory] Cleaned up blob URLs');
   }
   
   private clearTemporaryCaches(): void {
@@ -275,17 +341,8 @@ export const createSecureCanvas = (width: number, height: number): HTMLCanvasEle
     canvas.width = width;
     canvas.height = height;
     
-    // Register for cleanup
-    const cleanup = () => {
-      canvas.width = 1;
-      canvas.height = 1;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.clearRect(0, 0, 1, 1);
-      }
-    };
-    
-    memoryManager.registerCleanupHandler(cleanup);
+    // Track the canvas for cleanup
+    memoryManager.trackCanvas(canvas);
     
     return canvas;
   } catch (error) {
