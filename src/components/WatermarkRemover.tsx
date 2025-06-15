@@ -1,4 +1,5 @@
-import React, { useState, useCallback, useEffect } from 'react';
+
+import React, { useState, useCallback } from 'react';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 
@@ -7,229 +8,81 @@ import Sidebar from './watermark/Sidebar';
 import Toolbar from './watermark/Toolbar';
 import ImageGrid from './watermark/ImageGrid';
 
-import { ImageItem, WatermarkMark, DragState, ResizeState, ResizeHandle, ProcessingAlgorithm } from './watermark/types';
-import { processImageCanvas } from './watermark/imageProcessor';
-import { validateFileUpload, validateImageDimensions, validateZoomLevel, validateWatermarkMark } from '@/utils/apiSecurity';
-import { validateFileContent } from '@/utils/fileContentValidator';
-import { memoryManager } from '@/utils/memoryManager';
-import { handleSecureError } from '@/utils/secureErrorHandler';
+import { useImageState } from '@/hooks/useImageState';
+import { useWatermarkMarking } from '@/hooks/useWatermarkMarking';
+import { useImageProcessing } from '@/hooks/useImageProcessing';
+import { useFileUpload } from '@/hooks/useFileUpload';
+import { useImageHandlers } from '@/hooks/useImageHandlers';
 
 const WatermarkRemover = () => {
-  const [images, setImages] = useState<ImageItem[]>([]);
-  const [progress, setProgress] = useState<number>(0);
-  const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [isMarkingMode, setIsMarkingMode] = useState(false);
-  const [processingAlgorithm, setProcessingAlgorithm] = useState<ProcessingAlgorithm>('lama');
-  const [zoom, setZoom] = useState<number>(1);
-  const [dragState, setDragState] = useState<DragState>({ isDragging: false, startX: 0, startY: 0, currentX: 0, currentY: 0 });
-  const [resizeState, setResizeState] = useState<ResizeState>({ isResizing: false, resizeHandle: null, startX: 0, startY: 0 });
-  const [selectedMark, setSelectedMark] = useState<boolean>(false);
-  const [isBatchDownloadOpen, setIsBatchDownloadOpen] = useState(false);
-  const [isBatchProcessing, setIsBatchProcessing] = useState(false);
-  const [batchProgress, setBatchProgress] = useState<{ [key: string]: number }>({});
   const [sdApiKey, setSdApiKey] = useState<string>('');
   const [isApiConfigOpen, setIsApiConfigOpen] = useState(false);
+  const [isBatchDownloadOpen, setIsBatchDownloadOpen] = useState(false);
 
-  useEffect(() => {
-    if (images.length > 0 && !selectedImageId) {
-      setSelectedImageId(images[0].id);
-    }
-  }, [images, selectedImageId]);
+  // Use custom hooks
+  const {
+    images,
+    selectedImageId,
+    selectedImage,
+    setSelectedImageId,
+    addImages,
+    updateImage,
+    updateImages,
+    removeImage,
+    restoreToOriginal
+  } = useImageState();
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      memoryManager.cleanup();
-    };
-  }, []);
+  const {
+    isMarkingMode,
+    zoom,
+    setZoom,
+    dragState,
+    setDragState,
+    resizeState,
+    setResizeState,
+    selectedMark,
+    setSelectedMark,
+    getImageCoordinates,
+    getResizeHandle,
+    clearWatermarkMark,
+    handleMarkingToggle,
+    handleBatchApplyWatermark
+  } = useWatermarkMarking(updateImage, updateImages);
 
-  const loadImageDimensions = (file: File): Promise<{ width: number, height: number }> => {
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => {
-        try {
-          const validation = validateImageDimensions(img.naturalWidth, img.naturalHeight);
-          if (!validation.isValid) {
-            reject(new Error(validation.error));
-            return;
-          }
-          resolve({ width: img.naturalWidth, height: img.naturalHeight });
-        } catch (error) {
-          reject(new Error(handleSecureError(error, 'image-dimension-validation', 'medium')));
-        }
-      };
-      img.onerror = () => reject(new Error('无法加载图片'));
-      
-      try {
-        const url = URL.createObjectURL(file);
-        memoryManager.trackBlobUrl(url);
-        img.src = url;
-      } catch (error) {
-        reject(new Error(handleSecureError(error, 'image-url-creation', 'medium')));
-      }
-    });
-  };
+  const {
+    isProcessing,
+    progress,
+    isBatchProcessing,
+    batchProgress,
+    processingAlgorithm,
+    selectedImageId: processingSelectedImageId,
+    setProcessingAlgorithm,
+    handleRemoveWatermark,
+    handleBatchProcess
+  } = useImageProcessing(updateImage);
 
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files;
-    if (!files || files.length === 0) return;
-
-    // Validate files with enhanced security
-    const validFiles: File[] = [];
-    const maxConcurrentValidations = 5; // Prevent DoS
-    
-    for (let i = 0; i < Math.min(files.length, maxConcurrentValidations); i++) {
-      const file = files[i];
-      
-      try {
-        // Basic validation
-        const basicValidation = validateFileUpload(file);
-        if (!basicValidation.isValid) {
-          toast.error(`${file.name}: ${basicValidation.error}`, { duration: 3000 });
-          continue;
-        }
-
-        // Content validation
-        const contentValidation = await validateFileContent(file);
-        if (!contentValidation.isValid) {
-          toast.error(`${file.name}: ${contentValidation.error}`, { duration: 3000 });
-          continue;
-        }
-
-        // Show warnings if any
-        if (contentValidation.warnings && contentValidation.warnings.length > 0) {
-          contentValidation.warnings.forEach(warning => {
-            toast.warning(`${file.name}: ${warning}`, { duration: 2000 });
-          });
-        }
-
-        validFiles.push(file);
-      } catch (error: any) {
-        const errorMessage = handleSecureError(error, 'file-upload-validation', 'medium');
-        toast.error(`${file.name}: ${errorMessage}`, { duration: 3000 });
-      }
-    }
-
-    if (validFiles.length === 0) {
-      event.target.value = '';
-      return;
-    }
-
-    // Limit total number of images
-    const maxImages = 20;
-    if (images.length + validFiles.length > maxImages) {
-      toast.error(`最多只能上传 ${maxImages} 张图片`, { duration: 2000 });
-      event.target.value = '';
-      return;
-    }
-
-    try {
-      const newImages = await Promise.all(validFiles.map(async file => {
-        try {
-          const dimensions = await loadImageDimensions(file);
-          const url = URL.createObjectURL(file);
-          memoryManager.trackBlobUrl(url);
-          
-          return {
-            id: crypto.randomUUID(),
-            file,
-            url,
-            processedUrl: null,
-            rotation: 0,
-            dimensions,
-            watermarkMark: undefined,
-            processCount: 0,
-            isMarkingCompleted: false,
-          } as ImageItem;
-        } catch (error: any) {
-          const errorMessage = handleSecureError(error, 'image-loading', 'medium');
-          toast.error(`${file.name}: ${errorMessage}`, { duration: 2000 });
-          return null;
-        }
-      }));
-
-      const validImages = newImages.filter(img => img !== null) as ImageItem[];
-      setImages(prev => [...prev, ...validImages]);
-      
-      if (validImages.length > 0) {
-        toast.success(`成功上传 ${validImages.length} 张图片`, { duration: 1000 });
-      }
-    } catch (error: any) {
-      const errorMessage = handleSecureError(error, 'file-upload-processing', 'high');
-      toast.error(errorMessage, { duration: 2000 });
-    } finally {
-      event.target.value = '';
-    }
-  };
-
-  const handleAlgorithmChange = (value: string) => {
-    try {
-      setProcessingAlgorithm(value as ProcessingAlgorithm);
-    } catch (error: any) {
-      const errorMessage = handleSecureError(error, 'algorithm-change', 'low');
-      toast.error(errorMessage, { duration: 1000 });
-    }
-  };
-
-  const handleZoomChange = (newZoom: number) => {
-    try {
-      const validation = validateZoomLevel(newZoom);
-      if (!validation.isValid) {
-        toast.error(validation.error, { duration: 1000 });
-        return;
-      }
-      setZoom(newZoom);
-    } catch (error: any) {
-      const errorMessage = handleSecureError(error, 'zoom-change', 'low');
-      toast.error(errorMessage, { duration: 1000 });
-    }
-  };
-
-  const syncScroll = useCallback((source: 'original' | 'processed', scrollLeft: number, scrollTop: number) => {
-    // This function needs to be adapted as refs are now in a child component.
-    // For simplicity in this refactoring, we'll accept that synced scroll might not work without more complex state management (e.g. context or prop drilling refs)
-    // A proper fix would involve forwarding refs or using a shared state for scroll positions.
-  }, []);
-
-  const getImageCoordinates = (event: React.MouseEvent<HTMLImageElement>) => {
-    const rect = event.currentTarget.getBoundingClientRect();
-    const x = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
-    const y = Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height));
-    return { x, y };
-  };
+  const { handleFileUpload } = useFileUpload(images, addImages);
   
-  const getResizeHandle = (x: number, y: number, mark: WatermarkMark): ResizeHandle | null => {
-    const handleSize = Math.max(0.01, 0.02 / zoom);
-    const handles = {
-      'nw': { x: mark.x, y: mark.y },
-      'ne': { x: mark.x + mark.width, y: mark.y },
-      'sw': { x: mark.x, y: mark.y + mark.height },
-      'se': { x: mark.x + mark.width, y: mark.y + mark.height },
-      'n': { x: mark.x + mark.width / 2, y: mark.y },
-      'e': { x: mark.x + mark.width, y: mark.y + mark.height / 2 },
-      's': { x: mark.x + mark.width / 2, y: mark.y + mark.height },
-      'w': { x: mark.x, y: mark.y + mark.height / 2 }
-    } as const;
-    for (const [handle, pos] of Object.entries(handles)) {
-      if (Math.abs(x - pos.x) < handleSize && Math.abs(y - pos.y) < handleSize) {
-        return handle as ResizeHandle;
-      }
-    }
-    return null;
-  };
+  const {
+    handleZoomChange,
+    syncScroll,
+    handleDownload,
+    handleBatchDownload
+  } = useImageHandlers();
 
+  // Mouse event handlers for watermark marking
   const handleMouseDown = useCallback((event: React.MouseEvent<HTMLImageElement>, imageId: string) => {
     if (!isMarkingMode) return;
     
     try {
       event.preventDefault();
       event.stopPropagation();
-      const selectedImage = images.find(img => img.id === imageId);
-      if (!selectedImage) return;
+      const selectedImageForEvent = images.find(img => img.id === imageId);
+      if (!selectedImageForEvent) return;
       const { x, y } = getImageCoordinates(event);
-      if (selectedImage.watermarkMark) {
-        const mark = selectedImage.watermarkMark;
+      
+      if (selectedImageForEvent.watermarkMark) {
+        const mark = selectedImageForEvent.watermarkMark;
         const handle = getResizeHandle(x, y, mark);
         if (handle) {
           setResizeState({ isResizing: true, resizeHandle: handle, startX: x, startY: y });
@@ -243,21 +96,21 @@ const WatermarkRemover = () => {
         }
       }
       setSelectedMark(false);
-      setImages(prev => prev.map(img => img.id === imageId ? { ...img, watermarkMark: undefined } : img));
+      updateImage(imageId, { watermarkMark: undefined });
       setDragState({ isDragging: true, startX: x, startY: y, currentX: x, currentY: y });
     } catch (error: any) {
-      const errorMessage = handleSecureError(error, 'mouse-down-handling', 'low');
-      console.error(errorMessage);
+      console.error('Mouse down handling error:', error);
     }
-  }, [isMarkingMode, images, zoom]);
+  }, [isMarkingMode, images, zoom, getImageCoordinates, getResizeHandle, setResizeState, setSelectedMark, setDragState, updateImage]);
 
   const handleMouseMove = useCallback((event: React.MouseEvent<HTMLImageElement>, imageId: string) => {
     if (!isMarkingMode) return;
     const { x, y } = getImageCoordinates(event);
+    
     if (!dragState.isDragging && !resizeState.isResizing) {
-      const selectedImage = images.find(img => img.id === imageId);
-      if (selectedImage?.watermarkMark) {
-        const mark = selectedImage.watermarkMark;
+      const selectedImageForEvent = images.find(img => img.id === imageId);
+      if (selectedImageForEvent?.watermarkMark) {
+        const mark = selectedImageForEvent.watermarkMark;
         const handle = getResizeHandle(x, y, mark);
         const target = event.currentTarget;
         if (handle) {
@@ -273,14 +126,17 @@ const WatermarkRemover = () => {
       }
       return;
     }
+    
     event.preventDefault();
     event.stopPropagation();
+    
     if (resizeState.isResizing && resizeState.resizeHandle) {
-      const selectedImage = images.find(img => img.id === imageId);
-      if (selectedImage?.watermarkMark) {
-        const mark = selectedImage.watermarkMark;
+      const selectedImageForEvent = images.find(img => img.id === imageId);
+      if (selectedImageForEvent?.watermarkMark) {
+        const mark = selectedImageForEvent.watermarkMark;
         let newMark = { ...mark };
         const minSize = Math.max(0.01, 0.015 / zoom);
+        
         switch (resizeState.resizeHandle) {
           case 'se': newMark.width = Math.max(minSize, x - mark.x); newMark.height = Math.max(minSize, y - mark.y); break;
           case 'nw': const newWidth = mark.width + (mark.x - x); const newHeight = mark.height + (mark.y - y); if (newWidth > minSize && newHeight > minSize) { newMark.x = x; newMark.y = y; newMark.width = newWidth; newMark.height = newHeight; } break;
@@ -291,32 +147,34 @@ const WatermarkRemover = () => {
           case 'e': newMark.width = Math.max(minSize, x - mark.x); break;
           case 'w': const wWidth = mark.width + (mark.x - x); if (wWidth > minSize) { newMark.x = x; newMark.width = wWidth; } break;
         }
-        setImages(prev => prev.map(img => img.id === imageId ? { ...img, watermarkMark: newMark } : img));
+        updateImage(imageId, { watermarkMark: newMark });
       }
     } else if (dragState.isDragging) {
       if (selectedMark) {
-        const selectedImage = images.find(img => img.id === imageId);
-        if (selectedImage?.watermarkMark) {
-          const mark = selectedImage.watermarkMark;
+        const selectedImageForEvent = images.find(img => img.id === imageId);
+        if (selectedImageForEvent?.watermarkMark) {
+          const mark = selectedImageForEvent.watermarkMark;
           const newX = Math.max(0, Math.min(1 - mark.width, x - dragState.startX));
           const newY = Math.max(0, Math.min(1 - mark.height, y - dragState.startY));
-          setImages(prev => prev.map(img => img.id === imageId ? { ...img, watermarkMark: { ...mark, x: newX, y: newY } } : img));
+          updateImage(imageId, { watermarkMark: { ...mark, x: newX, y: newY } });
         }
       } else {
         setDragState(prev => ({ ...prev, currentX: x, currentY: y }));
       }
     }
-  }, [isMarkingMode, dragState, resizeState, selectedMark, images, zoom]);
+  }, [isMarkingMode, dragState, resizeState, selectedMark, images, zoom, getImageCoordinates, getResizeHandle, updateImage, setDragState]);
 
   const handleMouseUp = useCallback((event: React.MouseEvent<HTMLImageElement>, imageId: string) => {
     if (!isMarkingMode) return;
     event.preventDefault();
     event.stopPropagation();
     event.currentTarget.style.cursor = 'crosshair';
+    
     if (resizeState.isResizing) {
       setResizeState({ isResizing: false, resizeHandle: null, startX: 0, startY: 0 });
       return;
     }
+    
     if (dragState.isDragging && !selectedMark) {
       const { startX, startY, currentX, currentY } = dragState;
       const left = Math.min(startX, currentX);
@@ -324,243 +182,30 @@ const WatermarkRemover = () => {
       const width = Math.abs(currentX - startX);
       const height = Math.abs(currentY - startY);
       const minSize = Math.max(0.01, 0.015 / zoom);
+      
       if (width > minSize && height > minSize) {
-        setImages(prev => prev.map(img => img.id === imageId ? { ...img, watermarkMark: { x: left, y: top, width, height } } : img));
+        updateImage(imageId, { watermarkMark: { x: left, y: top, width, height } });
         setSelectedMark(true);
       }
     }
     setDragState({ isDragging: false, startX: 0, startY: 0, currentX: 0, currentY: 0 });
-  }, [isMarkingMode, dragState, selectedMark, zoom]);
+  }, [isMarkingMode, dragState, selectedMark, zoom, resizeState, setResizeState, setDragState, updateImage, setSelectedMark]);
 
-  const clearWatermarkMark = (imageId: string) => {
-    try {
-      setImages(prev => prev.map(img => img.id === imageId ? { ...img, watermarkMark: undefined, isMarkingCompleted: false } : img));
-      setSelectedMark(false);
-    } catch (error: any) {
-      const errorMessage = handleSecureError(error, 'watermark-clear', 'low');
-      toast.error(errorMessage, { duration: 1000 });
+  // Wrapper functions to maintain compatibility
+  const handleMarkingToggleWrapper = () => handleMarkingToggle(selectedImage);
+  const handleBatchApplyWatermarkWrapper = () => handleBatchApplyWatermark(selectedImage, selectedImageId);
+  const handleBatchProcessWrapper = () => handleBatchProcess(images);
+  const handleBatchDownloadWrapper = () => {
+    if (handleBatchDownload(images)) {
+      setIsBatchDownloadOpen(true);
     }
   };
-
-  const restoreToOriginal = (imageId: string) => {
-    try {
-      const image = images.find(img => img.id === imageId);
-      if (image?.processedUrl) {
-        memoryManager.releaseBlobUrl(image.processedUrl);
-      }
-      setImages(prev => prev.map(img => img.id === imageId ? { ...img, processedUrl: null, processCount: 0, watermarkMark: undefined, isMarkingCompleted: false } : img));
-      setSelectedMark(false);
-      toast.success("已还原到原图状态", { duration: 800 });
-    } catch (error: any) {
-      const errorMessage = handleSecureError(error, 'image-restore', 'medium');
-      toast.error(errorMessage, { duration: 1000 });
+  const handleZoomChangeWrapper = (newZoom: number) => {
+    const validatedZoom = handleZoomChange(newZoom);
+    if (validatedZoom !== null) {
+      setZoom(validatedZoom);
     }
   };
-
-  const handleCompleteMarking = (imageId: string) => {
-    try {
-      const selectedImage = images.find(img => img.id === imageId);
-      if (!selectedImage?.watermarkMark) {
-        toast.error("请先标记水印位置", { duration: 1000 });
-        return;
-      }
-
-      // Validate watermark mark
-      const validation = validateWatermarkMark(selectedImage.watermarkMark);
-      if (!validation.isValid) {
-        toast.error(validation.error, { duration: 1000 });
-        return;
-      }
-
-      setImages(prev => prev.map(img => img.id === imageId ? { ...img, isMarkingCompleted: true } : img));
-      setIsMarkingMode(false);
-      setSelectedMark(false);
-      toast.success("水印标记已完成，现在可以开始处理", { duration: 1000 });
-    } catch (error: any) {
-      const errorMessage = handleSecureError(error, 'marking-completion', 'medium');
-      toast.error(errorMessage, { duration: 1000 });
-    }
-  };
-
-  const handleRemoveWatermark = async (imageItem: ImageItem) => {
-    if (!imageItem.isMarkingCompleted || !imageItem.watermarkMark) {
-      toast.error("请先完成水印标记", { duration: 1000 });
-      return;
-    }
-    if (isProcessing || isBatchProcessing) {
-      toast.error("请等待当前任务完成", { duration: 800 });
-      return;
-    }
-
-    setIsProcessing(true);
-    setProgress(0);
-    
-    try {
-      // Validate watermark mark before processing
-      const validation = validateWatermarkMark(imageItem.watermarkMark);
-      if (!validation.isValid) {
-        throw new Error(validation.error);
-      }
-
-      toast.info("开始处理图片...", { duration: 800 });
-      const progressInterval = setInterval(() => setProgress(prev => Math.min(prev + 5, 90)), 100);
-      
-      const processedBlob = await processImageCanvas(
-        imageItem.file, 
-        imageItem.watermarkMark, 
-        processingAlgorithm, 
-        imageItem.processedUrl || undefined
-      );
-      
-      clearInterval(progressInterval);
-      setProgress(100);
-      
-      // Clean up old processed URL
-      if (imageItem.processedUrl) {
-        memoryManager.releaseBlobUrl(imageItem.processedUrl);
-      }
-      
-      const processedUrl = URL.createObjectURL(processedBlob);
-      memoryManager.trackBlobUrl(processedUrl);
-      
-      setImages(prev => prev.map(img => img.id === imageItem.id ? { ...img, processedUrl, processCount: img.processCount + 1 } : img));
-      toast.success(`图片处理完成！${imageItem.processCount > 0 ? '继续优化' : '水印已去除'}`, { duration: 1500 });
-    } catch (error: any) {
-      const errorMessage = handleSecureError(error, 'watermark-removal', 'high');
-      toast.error(errorMessage, { duration: 1500 });
-    } finally {
-      setIsProcessing(false);
-      setProgress(0);
-    }
-  };
-
-  const handleBatchProcess = async () => {
-    if (isProcessing || isBatchProcessing) {
-      toast.error("请等待当前任务完成", { duration: 800 });
-      return;
-    }
-    const imagesToProcess = images.filter(img => img.watermarkMark && img.isMarkingCompleted);
-    if (imagesToProcess.length === 0) {
-      toast.error("请先为图片标记水印并完成标记", { duration: 1000 });
-      return;
-    }
-    setIsBatchProcessing(true);
-    setBatchProgress({});
-    try {
-      toast.info(`开始批量处理 ${imagesToProcess.length} 张已完成标记的图片`, { duration: 1000 });
-      for (let i = 0; i < imagesToProcess.length; i++) {
-        const imageItem = imagesToProcess[i];
-        setBatchProgress(prev => ({ ...prev, [imageItem.id]: 0 }));
-        try {
-          const progressInterval = setInterval(() => setBatchProgress(prev => ({ ...prev, [imageItem.id]: Math.min((prev[imageItem.id] || 0) + 10, 85) })), 100);
-          const processedBlob = await processImageCanvas(imageItem.file, imageItem.watermarkMark, processingAlgorithm, imageItem.processedUrl || undefined);
-          clearInterval(progressInterval);
-          setBatchProgress(prev => ({ ...prev, [imageItem.id]: 100 }));
-          
-          // Clean up old processed URL
-          if (imageItem.processedUrl) {
-            memoryManager.releaseBlobUrl(imageItem.processedUrl);
-          }
-          
-          const processedUrl = URL.createObjectURL(processedBlob);
-          memoryManager.trackBlobUrl(processedUrl);
-          
-          setImages(prev => prev.map(img => img.id === imageItem.id ? { ...img, processedUrl, processCount: img.processCount + 1 } : img));
-          console.log(`批量处理进度: ${i + 1}/${imagesToProcess.length} - ${imageItem.file.name}`);
-        } catch (error: any) {
-          console.error(`处理图片 ${imageItem.file.name} 失败:`, error);
-          setBatchProgress(prev => ({ ...prev, [imageItem.id]: -1 }));
-        }
-      }
-      const successCount = Object.values(batchProgress).filter(p => p === 100).length;
-      const failedCount = Object.values(batchProgress).filter(p => p === -1).length;
-      if (successCount > 0) {
-        toast.success(`批量处理完成！成功处理 ${successCount} 张图片${failedCount > 0 ? `，失败 ${failedCount} 张` : ''}`, { duration: 2000 });
-      } else {
-        toast.error("批量处理失败，请检查图片格式", { duration: 1500 });
-      }
-    } catch (error: any) {
-      console.error("批量处理错误:", error);
-      toast.error(`批量处理失败: ${error.message}`, { duration: 1500 });
-    } finally {
-      setIsBatchProcessing(false);
-      setBatchProgress({});
-    }
-  };
-
-  const handleBatchApplyWatermark = () => {
-    const mark = selectedImage?.watermarkMark;
-    if (!mark) {
-      toast.error("当前图片没有标记水印", { duration: 800 });
-      return;
-    }
-    setImages(prev => prev.map(img => img.id === selectedImageId ? img : { ...img, watermarkMark: { ...mark }, isMarkingCompleted: false }));
-    toast.success(`已将水印标记应用到 ${images.length - 1} 张图片，请分别确认完成标记`, { duration: 1500 });
-  };
-  
-  const handleDownload = (imageItem: ImageItem) => {
-    if (imageItem.processedUrl) {
-      const link = document.createElement("a");
-      link.href = imageItem.processedUrl;
-      link.download = `watermark_removed_${imageItem.file.name}`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      toast.success("图片已开始下载!", { duration: 800 });
-    } else {
-      toast.error("请先去除水印", { duration: 800 });
-    }
-  };
-
-  const handleBatchDownload = () => {
-    const processedImages = images.filter(img => img.processedUrl);
-    if (processedImages.length === 0) {
-      toast.error("暂无已处理的图片", { duration: 800 });
-      return;
-    }
-    setIsBatchDownloadOpen(true);
-  };
-
-  const handleMarkingToggle = () => {
-    if (isMarkingMode) {
-      if (selectedImage?.watermarkMark) {
-        handleCompleteMarking(selectedImage.id);
-      } else {
-        setIsMarkingMode(false);
-        setSelectedMark(false);
-      }
-    } else {
-      setIsMarkingMode(true);
-      setSelectedMark(false);
-      if (selectedImage?.isMarkingCompleted) {
-        setImages(prev => prev.map(img => img.id === selectedImage.id ? { ...img, isMarkingCompleted: false } : img));
-      }
-    }
-  };
-  
-  const handleRemoveImage = (imageId: string) => {
-    setImages(prev => {
-      const imageToRemove = prev.find(img => img.id === imageId);
-      if (imageToRemove) {
-        // Clean up blob URLs
-        if (imageToRemove.url) {
-          memoryManager.releaseBlobUrl(imageToRemove.url);
-        }
-        if (imageToRemove.processedUrl) {
-          memoryManager.releaseBlobUrl(imageToRemove.processedUrl);
-        }
-      }
-      
-      const newImages = prev.filter(img => img.id !== imageId);
-      if (selectedImageId === imageId) {
-        setSelectedImageId(newImages.length > 0 ? newImages[0].id : null);
-      }
-      return newImages;
-    });
-    setSelectedMark(false);
-  };
-
-  const selectedImage = images.find(img => img.id === selectedImageId);
 
   return (
     <TooltipProvider>
@@ -575,10 +220,10 @@ const WatermarkRemover = () => {
           sdApiKey={sdApiKey}
           isApiConfigOpen={isApiConfigOpen}
           onFileUpload={handleFileUpload}
-          onBatchProcess={handleBatchProcess}
-          onAlgorithmChange={handleAlgorithmChange}
+          onBatchProcess={handleBatchProcessWrapper}
+          onAlgorithmChange={setProcessingAlgorithm}
           onImageSelect={setSelectedImageId}
-          onRemoveImage={handleRemoveImage}
+          onRemoveImage={removeImage}
           setSdApiKey={setSdApiKey}
           setIsApiConfigOpen={setIsApiConfigOpen}
           handleRemoveWatermark={handleRemoveWatermark}
@@ -590,14 +235,14 @@ const WatermarkRemover = () => {
             isMarkingMode={isMarkingMode}
             isProcessing={isProcessing}
             isBatchProcessing={isBatchProcessing}
-            handleMarkingToggle={handleMarkingToggle}
+            handleMarkingToggle={handleMarkingToggleWrapper}
             clearWatermarkMark={clearWatermarkMark}
-            handleBatchApplyWatermark={handleBatchApplyWatermark}
+            handleBatchApplyWatermark={handleBatchApplyWatermarkWrapper}
             restoreToOriginal={restoreToOriginal}
             handleRemoveWatermark={handleRemoveWatermark}
             handleDownload={handleDownload}
-            handleBatchDownload={handleBatchDownload}
-            selectedImageId={selectedImageId}
+            handleBatchDownload={handleBatchDownloadWrapper}
+            selectedImageId={processingSelectedImageId}
           />
           {selectedImage ? (
             <ImageGrid
@@ -605,7 +250,7 @@ const WatermarkRemover = () => {
               isProcessing={isProcessing}
               progress={progress}
               zoom={zoom}
-              setZoom={handleZoomChange}
+              setZoom={handleZoomChangeWrapper}
               syncScroll={syncScroll}
               isMarkingMode={isMarkingMode}
               handleMouseDown={handleMouseDown}
