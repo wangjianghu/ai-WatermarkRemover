@@ -1299,8 +1299,7 @@ const WatermarkRemover = () => {
     const needsMarking = !imageItem.watermarkMark;
     const needsCompletion = imageItem.watermarkMark && !imageItem.isMarkingCompleted;
     const isDisabled = isTaskRunning || needsMarking || needsCompletion;
-    
-    // Determine tooltip message based on priority
+
     let tooltipMessage = "";
     if (needsMarking) {
       tooltipMessage = "请先标记水印位置";
@@ -1310,28 +1309,30 @@ const WatermarkRemover = () => {
       tooltipMessage = "请等待当前任务完成";
     }
 
-    const button = (
-      <Button 
-        variant="outline" 
-        size="sm" 
-        onClick={e => {
+    const buttonComponent = (
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={(e) => {
           if (isListItem) e.stopPropagation();
           handleRemoveWatermark(imageItem);
-        }} 
+        }}
         disabled={isDisabled}
-        className={`text-xs ${isDisabled ? 'cursor-not-allowed' : ''}`}
+        className={`text-xs ${isDisabled ? "cursor-not-allowed" : ""}`}
       >
-        {isTaskRunning && selectedImageId === imageItem.id ? '处理中...' : 
-         imageItem.processCount > 0 ? '继续处理' : '去水印'}
+        {isTaskRunning && selectedImageId === imageItem.id
+          ? "处理中..."
+          : imageItem.processCount > 0
+          ? "继续处理"
+          : "去水印"}
       </Button>
     );
 
-    // If button is disabled and has a tooltip message, wrap with tooltip
     if (isDisabled && tooltipMessage) {
       return (
         <Tooltip>
           <TooltipTrigger asChild>
-            {button}
+            <div className="inline-block">{buttonComponent}</div>
           </TooltipTrigger>
           <TooltipContent>
             <p>{tooltipMessage}</p>
@@ -1340,7 +1341,7 @@ const WatermarkRemover = () => {
       );
     }
 
-    return button;
+    return buttonComponent;
   };
 
   return (
