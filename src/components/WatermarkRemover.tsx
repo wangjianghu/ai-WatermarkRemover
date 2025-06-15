@@ -1325,17 +1325,19 @@ const WatermarkRemover = () => {
       </Button>
     );
 
-    // Show tooltip when there's a tooltip text to display
-    if (tooltipText) {
+    // Always show tooltip when button is disabled and there's a tooltip message
+    if (isDisabled && tooltipText) {
       return (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            {buttonContent}
-          </TooltipTrigger>
-          <TooltipContent>
-            <p>{tooltipText}</p>
-          </TooltipContent>
-        </Tooltip>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              {buttonContent}
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>{tooltipText}</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       );
     }
 
