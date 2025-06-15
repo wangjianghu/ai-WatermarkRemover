@@ -35,30 +35,35 @@ const ProcessButton: React.FC<ProcessButtonProps> = ({
     tooltipMessage = "请等待当前任务完成";
   }
 
-  const buttonComponent = (
-    <Button
-      variant="outline"
-      size="sm"
-      onClick={(e) => {
-        if (isListItem) e.stopPropagation();
-        onClick(imageItem);
-      }}
-      disabled={isDisabled}
-      className={`text-xs ${isDisabled ? "cursor-not-allowed" : ""}`}
-    >
-      {isTaskRunning && selectedImageId === imageItem.id
-        ? "处理中..."
-        : imageItem.processCount > 0
-        ? "继续处理"
-        : "去水印"}
-    </Button>
-  );
+  const handleClick = (e: React.MouseEvent) => {
+    if (isListItem) e.stopPropagation();
+    if (!isDisabled) {
+      onClick(imageItem);
+    }
+  };
 
+  const buttonText = isTaskRunning && selectedImageId === imageItem.id
+    ? "处理中..."
+    : imageItem.processCount > 0
+    ? "继续处理"
+    : "去水印";
+
+  // 如果按钮被禁用且有提示信息，使用tooltip包装
   if (isDisabled && tooltipMessage) {
     return (
       <Tooltip>
         <TooltipTrigger asChild>
-          <div className="inline-block">{buttonComponent}</div>
+          <span className="inline-block">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleClick}
+              disabled={true}
+              className="text-xs cursor-not-allowed"
+            >
+              {buttonText}
+            </Button>
+          </span>
         </TooltipTrigger>
         <TooltipContent>
           <p>{tooltipMessage}</p>
@@ -67,8 +72,18 @@ const ProcessButton: React.FC<ProcessButtonProps> = ({
     );
   }
 
-  return buttonComponent;
+  // 如果按钮未被禁用，直接返回按钮
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={handleClick}
+      disabled={false}
+      className="text-xs"
+    >
+      {buttonText}
+    </Button>
+  );
 };
 
 export default ProcessButton;
-
