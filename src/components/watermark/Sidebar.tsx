@@ -1,10 +1,10 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Upload, Play, Info, Settings, Trash2 } from 'lucide-react';
+import { Upload, Play, Info, Settings, Trash2, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { ImageItem } from './types';
 import ProcessButton from './ProcessButton';
 import { toast } from 'sonner';
@@ -46,6 +46,48 @@ const Sidebar: React.FC<SidebarProps> = ({
   setIsApiConfigOpen,
   handleRemoveWatermark,
 }) => {
+  const [isValidating, setIsValidating] = useState(false);
+  const [validationStatus, setValidationStatus] = useState<'idle' | 'success' | 'error'>('idle');
+
+  const validateApiKey = async () => {
+    if (!sdApiKey.trim()) {
+      toast.error('请先输入API密钥');
+      return;
+    }
+
+    setIsValidating(true);
+    setValidationStatus('idle');
+
+    try {
+      // 这里模拟API验证调用，实际应该调用Stable Diffusion API的验证端点
+      const response = await fetch('https://api.stability.ai/v1/user/account', {
+        headers: {
+          'Authorization': `Bearer ${sdApiKey}`,
+          'Accept': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        setValidationStatus('success');
+        toast.success('API密钥验证成功！', { duration: 2000 });
+      } else {
+        setValidationStatus('error');
+        toast.error('API密钥验证失败，请检查密钥是否正确', { duration: 2000 });
+      }
+    } catch (error) {
+      setValidationStatus('error');
+      toast.error('验证失败，请检查网络连接或API密钥', { duration: 2000 });
+    } finally {
+      setIsValidating(false);
+    }
+  };
+
+  const handleSaveApiKey = () => {
+    localStorage.setItem('sd-api-key', sdApiKey);
+    setIsApiConfigOpen(false);
+    toast.success('API 密钥已保存', { duration: 1000 });
+  };
+
   return (
     <div className="w-80 flex-shrink-0 border-r bg-white">
       <div className="h-full flex flex-col p-4">
@@ -110,12 +152,54 @@ const Sidebar: React.FC<SidebarProps> = ({
                   <DialogContent className="sm:max-w-[425px]">
                     <DialogHeader><DialogTitle>配置 AI 智能填充 API</DialogTitle><DialogDescription>请输入您的 Stable Diffusion API 密钥以使用 AI 智能填充功能</DialogDescription></DialogHeader>
                     <div className="grid gap-4 py-4">
-                      <div className="grid grid-cols-4 items-center gap-4"><label htmlFor="api-key" className="text-right text-sm font-medium">API 密钥</label><input id="api-key" type="password" value={sdApiKey} onChange={(e) => setSdApiKey(e.target.value)} className="col-span-3 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="输入您的 API 密钥" /></div>
-                      <div className="text-xs text-gray-500 mt-2"><p>• API 密钥将保存在本地存储中</p><p>• 如需获取 API 密钥，请访问相关服务提供商</p></div>
+                      <div className="grid grid-cols-4 items-center gap-4">
+                        <label htmlFor="api-key" className="text-right text-sm font-medium">API 密钥</label>
+                        <div className="col-span-3 space-y-2">
+                          <input 
+                            id="api-key" 
+                            type="password" 
+                            value={sdApiKey} 
+                            onChange={(e) => setSdApiKey(e.target.value)} 
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                            placeholder="输入您的 API 密钥" 
+                          />
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            onClick={validateApiKey}
+                            disabled={isValidating || !sdApiKey.trim()}
+                            className="w-full"
+                          >
+                            {isValidating ? (
+                              <>
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                验证中...
+                              </>
+                            ) : validationStatus === 'success' ? (
+                              <>
+                                <CheckCircle className="h-4 w-4 mr-2 text-green-600" />
+                                验证成功
+                              </>
+                            ) : validationStatus === 'error' ? (
+                              <>
+                                <XCircle className="h-4 w-4 mr-2 text-red-600" />
+                                验证失败，重新验证
+                              </>
+                            ) : (
+                              '验证 API 密钥'
+                            )}
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="text-xs text-gray-500 mt-2">
+                        <p>• API 密钥将保存在本地存储中</p>
+                        <p>• 如需获取 API 密钥，请访问 Stability AI 官网</p>
+                        <p>• 验证成功后即可使用 AI 智能填充功能</p>
+                      </div>
                     </div>
                     <div className="flex justify-end space-x-2">
                       <Button variant="outline" onClick={() => setIsApiConfigOpen(false)}>取消</Button>
-                      <Button onClick={() => { localStorage.setItem('sd-api-key', sdApiKey); setIsApiConfigOpen(false); toast.success('API 密钥已保存', { duration: 1000 }); }}>保存</Button>
+                      <Button onClick={handleSaveApiKey} disabled={validationStatus !== 'success'}>保存</Button>
                     </div>
                   </DialogContent>
                 </Dialog>
