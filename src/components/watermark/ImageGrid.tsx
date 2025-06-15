@@ -1,8 +1,8 @@
 
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
+import { ZoomIn, ZoomOut, RotateCcw, Eye, EyeOff } from 'lucide-react';
 import { ImageItem, WatermarkMark, DragState, ResizeState, ResizeHandle } from './types';
 
 interface ImageGridProps {
@@ -36,6 +36,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
 }) => {
   const originalScrollRef = useRef<HTMLDivElement>(null);
   const processedScrollRef = useRef<HTMLDivElement>(null);
+  const [mobileViewMode, setMobileViewMode] = useState<'original' | 'processed'>('original');
 
   const handleZoomIn = () => setZoom(prev => Math.min(prev * 1.2, 5));
   const handleZoomOut = () => setZoom(prev => Math.max(prev / 1.2, 0.1));
@@ -68,51 +69,170 @@ const ImageGrid: React.FC<ImageGridProps> = ({
     return <div className="absolute border-2 border-dashed border-blue-500 bg-transparent pointer-events-none transition-all duration-75 rounded-sm" style={{ left: `${left * 100}%`, top: `${top * 100}%`, width: `${width * 100}%`, height: `${height * 100}%`, borderWidth: `${Math.max(1, 2 / zoom)}px` }} />;
   };
 
-  return (
-    <div className="flex-1 grid grid-cols-2 gap-4 p-4 min-h-0 overflow-hidden">
-      {/* Original Image */}
-      <div className="flex flex-col min-h-0">
-        <div className="flex items-center justify-between mb-2 flex-shrink-0">
-          <div className="flex items-center space-x-4">
-            <span className="text-sm font-medium text-gray-600">原图</span>
-            {isProcessing && <div className="flex items-center space-x-2"><Progress value={progress} className="w-20 h-2" /><span className="text-xs text-gray-500">{progress}%</span></div>}
-          </div>
-          <div className="flex items-center space-x-1">
-            <Button variant="ghost" size="sm" onClick={handleZoomOut} className="h-6 w-6 p-0"><ZoomOut className="h-3 w-3" /></Button>
-            <Button variant="ghost" size="sm" onClick={resetZoom} className="h-6 px-2 text-xs"><RotateCcw className="h-3 w-3" /></Button>
-            <Button variant="ghost" size="sm" onClick={handleZoomIn} className="h-6 w-6 p-0"><ZoomIn className="h-3 w-3" /></Button>
-            <span className="text-xs text-gray-500 ml-2">{Math.round(zoom * 100)}%</span>
-          </div>
-        </div>
-        <div ref={originalScrollRef} className="flex-1 relative bg-white rounded-lg border overflow-auto min-h-0" onScroll={e => { const target = e.target as HTMLDivElement; syncScroll('original', target.scrollLeft, target.scrollTop); }}>
-          <div className="p-4 flex items-center justify-center min-h-full">
-            <div className="relative" style={{ transform: `scale(${zoom})`, transformOrigin: 'center center' }}>
-              <img src={selectedImage.url} alt="原图" className={`block object-contain transition-transform duration-200 ease-out ${isMarkingMode ? 'cursor-crosshair' : ''}`} onMouseDown={e => handleMouseDown(e, selectedImage.id)} onMouseMove={e => handleMouseMove(e, selectedImage.id)} onMouseUp={e => handleMouseUp(e, selectedImage.id)} draggable={false} />
-              {renderWatermarkMark(selectedImage.watermarkMark)}
-              {renderDragPreview()}
+  const renderImageContainer = (
+    type: 'original' | 'processed',
+    url: string,
+    title: string,
+    allowInteraction: boolean = false
+  ) => (
+    <div className="flex flex-col min-h-0 flex-1">
+      <div className="flex items-center justify-between mb-2 flex-shrink-0">
+        <div className="flex items-center space-x-4">
+          <span className="text-sm font-medium text-gray-600">{title}</span>
+          {isProcessing && type === 'original' && (
+            <div className="flex items-center space-x-2">
+              <Progress value={progress} className="w-16 sm:w-20 h-2" />
+              <span className="text-xs text-gray-500 hidden sm:inline">{progress}%</span>
             </div>
+          )}
+        </div>
+        <div className="flex items-center space-x-1">
+          <Button variant="ghost" size="sm" onClick={handleZoomOut} className="h-6 w-6 p-0" disabled={type === 'processed' && !selectedImage.processedUrl}>
+            <ZoomOut className="h-3 w-3" />
+          </Button>
+          <Button variant="ghost" size="sm" onClick={resetZoom} className="h-6 px-2 text-xs" disabled={type === 'processed' && !selectedImage.processedUrl}>
+            <RotateCcw className="h-3 w-3" />
+          </Button>
+          <Button variant="ghost" size="sm" onClick={handleZoomIn} className="h-6 w-6 p-0" disabled={type === 'processed' && !selectedImage.processedUrl}>
+            <ZoomIn className="h-3 w-3" />
+          </Button>
+          <span className="text-xs text-gray-500 ml-2 hidden sm:inline">{Math.round(zoom * 100)}%</span>
+        </div>
+      </div>
+      <div 
+        ref={type === 'original' ? originalScrollRef : processedScrollRef}
+        className="flex-1 relative bg-white rounded-lg border overflow-auto min-h-0" 
+        onScroll={e => { 
+          const target = e.target as HTMLDivElement; 
+          syncScroll(type, target.scrollLeft, target.scrollTop); 
+        }}
+      >
+        <div className="p-2 sm:p-4 flex items-center justify-center min-h-full">
+          <div className="relative" style={{ transform: `scale(${zoom})`, transformOrigin: 'center center' }}>
+            <img 
+              src={url} 
+              alt={title} 
+              className={`block object-contain transition-transform duration-200 ease-out max-w-none ${allowInteraction && isMarkingMode ? 'cursor-crosshair' : ''}`} 
+              onMouseDown={allowInteraction ? e => handleMouseDown(e, selectedImage.id) : undefined}
+              onMouseMove={allowInteraction ? e => handleMouseMove(e, selectedImage.id) : undefined}
+              onMouseUp={allowInteraction ? e => handleMouseUp(e, selectedImage.id) : undefined}
+              draggable={false} 
+            />
+            {allowInteraction && renderWatermarkMark(selectedImage.watermarkMark)}
+            {allowInteraction && renderDragPreview()}
           </div>
         </div>
       </div>
-      {/* Processed Image */}
+    </div>
+  );
+
+  // 桌面端双栏布局
+  const renderDesktopLayout = () => (
+    <div className="hidden lg:grid lg:grid-cols-2 gap-4 h-full">
+      {renderImageContainer('original', selectedImage.url, '原图', true)}
       <div className="flex flex-col min-h-0">
         <div className="flex items-center justify-between mb-2 flex-shrink-0">
           <span className="text-sm font-medium text-gray-600">处理后</span>
           <div className="flex items-center space-x-1">
-            <Button variant="ghost" size="sm" onClick={handleZoomOut} className="h-6 w-6 p-0" disabled={!selectedImage.processedUrl}><ZoomOut className="h-3 w-3" /></Button>
-            <Button variant="ghost" size="sm" onClick={resetZoom} className="h-6 px-2 text-xs" disabled={!selectedImage.processedUrl}><RotateCcw className="h-3 w-3" /></Button>
-            <Button variant="ghost" size="sm" onClick={handleZoomIn} className="h-6 w-6 p-0" disabled={!selectedImage.processedUrl}><ZoomIn className="h-3 w-3" /></Button>
+            <Button variant="ghost" size="sm" onClick={handleZoomOut} className="h-6 w-6 p-0" disabled={!selectedImage.processedUrl}>
+              <ZoomOut className="h-3 w-3" />
+            </Button>
+            <Button variant="ghost" size="sm" onClick={resetZoom} className="h-6 px-2 text-xs" disabled={!selectedImage.processedUrl}>
+              <RotateCcw className="h-3 w-3" />
+            </Button>
+            <Button variant="ghost" size="sm" onClick={handleZoomIn} className="h-6 w-6 p-0" disabled={!selectedImage.processedUrl}>
+              <ZoomIn className="h-3 w-3" />
+            </Button>
             <span className="text-xs text-gray-500 ml-2">{Math.round(zoom * 100)}%</span>
           </div>
         </div>
-        <div ref={processedScrollRef} className="flex-1 relative bg-white rounded-lg border overflow-auto min-h-0" onScroll={e => { const target = e.target as HTMLDivElement; syncScroll('processed', target.scrollLeft, target.scrollTop); }}>
+        <div 
+          ref={processedScrollRef}
+          className="flex-1 relative bg-white rounded-lg border overflow-auto min-h-0" 
+          onScroll={e => { 
+            const target = e.target as HTMLDivElement; 
+            syncScroll('processed', target.scrollLeft, target.scrollTop); 
+          }}
+        >
           {selectedImage.processedUrl ? (
-            <div className="p-4 flex items-center justify-center min-h-full"><div className="relative" style={{ transform: `scale(${zoom})`, transformOrigin: 'center center' }}><img src={selectedImage.processedUrl} alt="处理后" className="block object-contain" draggable={false} /></div></div>
+            <div className="p-4 flex items-center justify-center min-h-full">
+              <div className="relative" style={{ transform: `scale(${zoom})`, transformOrigin: 'center center' }}>
+                <img src={selectedImage.processedUrl} alt="处理后" className="block object-contain max-w-none" draggable={false} />
+              </div>
+            </div>
           ) : (
-            <div className="absolute inset-0 flex items-center justify-center text-gray-400 text-sm">{isProcessing ? (<div className="text-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-2"></div><div className="text-xs">正在处理...</div></div>) : ('等待处理')}</div>
+            <div className="absolute inset-0 flex items-center justify-center text-gray-400 text-sm">
+              {isProcessing ? (
+                <div className="text-center">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-2"></div>
+                  <div className="text-xs">正在处理...</div>
+                </div>
+              ) : (
+                '等待处理'
+              )}
+            </div>
           )}
         </div>
       </div>
+    </div>
+  );
+
+  // 移动端单栏布局
+  const renderMobileLayout = () => (
+    <div className="lg:hidden flex flex-col h-full">
+      {/* 移动端切换按钮 */}
+      <div className="flex items-center justify-center mb-3 flex-shrink-0">
+        <div className="flex bg-gray-100 rounded-lg p-1">
+          <Button
+            variant={mobileViewMode === 'original' ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => setMobileViewMode('original')}
+            className="text-xs px-3 py-1.5"
+          >
+            <Eye className="h-3 w-3 mr-1" />
+            原图
+          </Button>
+          <Button
+            variant={mobileViewMode === 'processed' ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => setMobileViewMode('processed')}
+            disabled={!selectedImage.processedUrl}
+            className="text-xs px-3 py-1.5"
+          >
+            <EyeOff className="h-3 w-3 mr-1" />
+            处理后
+          </Button>
+        </div>
+      </div>
+
+      {/* 当前显示的图片 */}
+      {mobileViewMode === 'original' ? 
+        renderImageContainer('original', selectedImage.url, '原图', true) : 
+        (selectedImage.processedUrl ? 
+          renderImageContainer('processed', selectedImage.processedUrl, '处理后', false) :
+          <div className="flex-1 flex items-center justify-center bg-white rounded-lg border">
+            <div className="text-center text-gray-400">
+              {isProcessing ? (
+                <div>
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-2"></div>
+                  <div className="text-sm">正在处理...</div>
+                  <Progress value={progress} className="w-32 h-2 mx-auto mt-2" />
+                  <div className="text-xs mt-1">{progress}%</div>
+                </div>
+              ) : (
+                <div className="text-sm">等待处理</div>
+              )}
+            </div>
+          </div>
+        )
+      }
+    </div>
+  );
+
+  return (
+    <div className="flex-1 p-2 sm:p-4 min-h-0 overflow-hidden">
+      {renderDesktopLayout()}
+      {renderMobileLayout()}
     </div>
   );
 };
