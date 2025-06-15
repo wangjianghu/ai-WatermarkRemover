@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback } from 'react';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
@@ -18,6 +17,7 @@ const WatermarkRemover = () => {
   const [sdApiKey, setSdApiKey] = useState<string>('');
   const [isApiConfigOpen, setIsApiConfigOpen] = useState(false);
   const [isBatchDownloadOpen, setIsBatchDownloadOpen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // Use custom hooks
   const {
@@ -209,27 +209,45 @@ const WatermarkRemover = () => {
 
   return (
     <TooltipProvider>
-      <div className="h-full flex">
-        <Sidebar
-          images={images}
-          selectedImageId={selectedImageId}
-          processingAlgorithm={processingAlgorithm}
-          isProcessing={isProcessing}
-          isBatchProcessing={isBatchProcessing}
-          batchProgress={batchProgress}
-          sdApiKey={sdApiKey}
-          isApiConfigOpen={isApiConfigOpen}
-          onFileUpload={handleFileUpload}
-          onBatchProcess={handleBatchProcessWrapper}
-          onAlgorithmChange={setProcessingAlgorithm}
-          onImageSelect={setSelectedImageId}
-          onRemoveImage={removeImage}
-          setSdApiKey={setSdApiKey}
-          setIsApiConfigOpen={setIsApiConfigOpen}
-          handleRemoveWatermark={handleRemoveWatermark}
-        />
+      <div className="h-full flex flex-col lg:flex-row relative">
+        {/* 移动端侧边栏遮罩 */}
+        {isSidebarOpen && (
+          <div 
+            className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden" 
+            onClick={() => setIsSidebarOpen(false)}
+          />
+        )}
+        
+        {/* 侧边栏 - 响应式设计 */}
+        <div className={`
+          fixed lg:relative top-0 left-0 h-full z-50 lg:z-auto
+          transform transition-transform duration-300 ease-in-out lg:transform-none
+          ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+          w-80 lg:w-80 xl:w-96 flex-shrink-0
+        `}>
+          <Sidebar
+            images={images}
+            selectedImageId={selectedImageId}
+            processingAlgorithm={processingAlgorithm}
+            isProcessing={isProcessing}
+            isBatchProcessing={isBatchProcessing}
+            batchProgress={batchProgress}
+            sdApiKey={sdApiKey}
+            isApiConfigOpen={isApiConfigOpen}
+            onFileUpload={handleFileUpload}
+            onBatchProcess={handleBatchProcessWrapper}
+            onAlgorithmChange={setProcessingAlgorithm}
+            onImageSelect={setSelectedImageId}
+            onRemoveImage={removeImage}
+            setSdApiKey={setSdApiKey}
+            setIsApiConfigOpen={setIsApiConfigOpen}
+            handleRemoveWatermark={handleRemoveWatermark}
+            onCloseSidebar={() => setIsSidebarOpen(false)}
+          />
+        </div>
 
-        <div className="flex-1 flex flex-col bg-gray-50 min-w-0">
+        {/* 主内容区域 - 响应式布局 */}
+        <div className="flex-1 flex flex-col bg-gray-50 min-w-0 h-full">
           <Toolbar
             selectedImage={selectedImage}
             isMarkingMode={isMarkingMode}
@@ -243,7 +261,10 @@ const WatermarkRemover = () => {
             handleDownload={handleDownload}
             handleBatchDownload={handleBatchDownloadWrapper}
             selectedImageId={processingSelectedImageId}
+            onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
           />
+          
+          {/* 图片展示区域 */}
           {selectedImage ? (
             <ImageGrid
               selectedImage={selectedImage}
@@ -260,14 +281,25 @@ const WatermarkRemover = () => {
               dragState={dragState}
             />
           ) : (
-            <div className="flex-1 flex items-center justify-center text-gray-500">
-              <div className="text-center">
-                <p className="text-lg mb-2">请从左侧列表中选择一张图片进行处理</p>
+            <div className="flex-1 flex items-center justify-center text-gray-500 p-4">
+              <div className="text-center max-w-md">
+                <p className="text-base md:text-lg mb-2">请从左侧列表中选择一张图片进行处理</p>
                 <p className="text-sm text-gray-400">上传后将在此处看到图片对比</p>
+                <button 
+                  className="lg:hidden mt-4 px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
+                  onClick={() => setIsSidebarOpen(true)}
+                >
+                  打开图片列表
+                </button>
               </div>
             </div>
           )}
-          <BatchDownloadDialog isOpen={isBatchDownloadOpen} onClose={() => setIsBatchDownloadOpen(false)} images={images} />
+          
+          <BatchDownloadDialog 
+            isOpen={isBatchDownloadOpen} 
+            onClose={() => setIsBatchDownloadOpen(false)} 
+            images={images} 
+          />
         </div>
       </div>
     </TooltipProvider>

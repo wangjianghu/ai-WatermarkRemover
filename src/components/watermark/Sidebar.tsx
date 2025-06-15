@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Upload, Play, Info, Settings, Trash2, CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import { Upload, Play, Info, Settings, Trash2, CheckCircle, XCircle, Loader2, X } from 'lucide-react';
 import { ImageItem, ProcessingAlgorithm } from './types';
 import ProcessButton from './ProcessButton';
 import { toast } from 'sonner';
@@ -27,6 +27,7 @@ interface SidebarProps {
   setSdApiKey: (key: string) => void;
   setIsApiConfigOpen: (isOpen: boolean) => void;
   handleRemoveWatermark: (imageItem: ImageItem) => void;
+  onCloseSidebar?: () => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({
@@ -46,6 +47,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   setSdApiKey,
   setIsApiConfigOpen,
   handleRemoveWatermark,
+  onCloseSidebar,
 }) => {
   const [isValidating, setIsValidating] = useState(false);
   const [validationStatus, setValidationStatus] = useState<'idle' | 'success' | 'error'>('idle');
@@ -88,7 +90,6 @@ const Sidebar: React.FC<SidebarProps> = ({
       return;
     }
     
-    // Clear insecure localStorage
     localStorage.removeItem('sd-api-key');
     setIsApiConfigOpen(false);
     toast.success('API 密钥已安全保存', { duration: 1000 });
@@ -98,21 +99,40 @@ const Sidebar: React.FC<SidebarProps> = ({
     const sanitized = sanitizeInput(value);
     setSdApiKey(sanitized);
     
-    // Reset validation status when key changes
     if (validationStatus !== 'idle') {
       setValidationStatus('idle');
     }
   };
 
   return (
-    <div className="w-80 flex-shrink-0 border-r bg-white">
-      <div className="h-full flex flex-col p-4">
-        {/* Upload Section */}
+    <div className="w-full h-full flex flex-col bg-white border-r lg:border-r-gray-200">
+      {/* 移动端顶部栏 */}
+      <div className="lg:hidden flex items-center justify-between p-4 border-b bg-gray-50">
+        <h3 className="font-semibold text-gray-800">图片处理工具</h3>
+        {onCloseSidebar && (
+          <button 
+            onClick={onCloseSidebar}
+            className="p-2 hover:bg-gray-200 rounded-md transition-colors"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        )}
+      </div>
+
+      <div className="flex-1 flex flex-col p-3 lg:p-4 min-h-0">
+        {/* 上传区域 - 响应式设计 */}
         <div className="space-y-3 flex-shrink-0">
           <div className="text-center">
-            <input type="file" accept="image/*" multiple onChange={onFileUpload} className="hidden" id="file-upload" />
+            <input 
+              type="file" 
+              accept="image/*" 
+              multiple 
+              onChange={onFileUpload} 
+              className="hidden" 
+              id="file-upload" 
+            />
             <label htmlFor="file-upload">
-              <Button variant="outline" className="w-full" asChild>
+              <Button variant="outline" className="w-full text-sm" asChild>
                 <span className="cursor-pointer">
                   <Upload className="h-4 w-4 mr-2" />
                   上传图片
@@ -125,7 +145,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             <Button
               onClick={onBatchProcess}
               disabled={isProcessing || isBatchProcessing || images.filter(img => img.watermarkMark && img.isMarkingCompleted).length === 0}
-              className="w-full"
+              className="w-full text-xs"
               variant="default"
             >
               <Play className="h-4 w-4 mr-2" />
@@ -133,15 +153,14 @@ const Sidebar: React.FC<SidebarProps> = ({
             </Button>
           )}
 
-          {/* Algorithm Selection */}
-          <div className="flex items-center space-x-2">
-            <label className="text-sm font-medium whitespace-nowrap">处理算法</label>
-            <div className="flex items-center space-x-2 flex-1">
+          {/* 算法选择区域 - 响应式布局 */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-gray-700">处理算法</label>
+            <div className="flex items-center gap-2">
               <select 
                 value={processingAlgorithm} 
                 onChange={e => onAlgorithmChange(e.target.value as ProcessingAlgorithm)} 
-                className="flex-1 p-2 border rounded-md text-sm" 
-                style={{ maxWidth: '120px' }}
+                className="flex-1 p-2 border rounded-md text-xs lg:text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
               >
                 <option value="lama">LaMa算法</option>
                 <option value="sd-inpainting">AI智能填充</option>
@@ -150,16 +169,20 @@ const Sidebar: React.FC<SidebarProps> = ({
                 <option value="aggressive">激进模式</option>
               </select>
               
-              {/* ... keep existing code (algorithm info popover and API config dialog) */}
+              {/* 算法信息 */}
               <Popover>
-                <PopoverTrigger asChild><Button variant="outline" size="sm" className="h-8 w-8 p-0"><Info className="h-4 w-4" /></Button></PopoverTrigger>
-                <PopoverContent className="w-80" side="bottom" align="center">
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-8 w-8 p-0 flex-shrink-0">
+                    <Info className="h-4 w-4" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-72 lg:w-80" side="bottom" align="center">
                   <div className="space-y-4">
                     <div>
                       <h4 className="font-medium text-sm mb-2">处理算法说明</h4>
                       <p className="text-xs text-gray-600 mb-3">不同算法的特点和适用场景</p>
                     </div>
-                    <div className="space-y-3">
+                    <div className="space-y-3 max-h-60 overflow-y-auto">
                       <div><h4 className="font-medium text-purple-600 mb-1 text-xs">AI智能填充 (最新)</h4><ul className="text-xs space-y-1 text-gray-700"><li>• 🧠 基于Stable Diffusion技术</li><li>• 🎨 智能理解图像语义内容</li><li>• ✨ 重新生成符合逻辑的细节</li><li>• 🔍 高清纹理修复和填充</li><li>• 🚀 适合复杂背景和精细修复</li></ul></div>
                       <div><h4 className="font-medium text-blue-600 mb-1 text-xs">LaMa算法 (推荐)</h4><ul className="text-xs space-y-1 text-gray-700"><li>• 🎯 专业大遮罩修复技术</li><li>• 🧠 AI智能纹理分析</li><li>• ✨ 多尺度语义修复</li><li>• 🎨 保持图像自然性</li><li>• 🚀 针对标记区域优化</li></ul></div>
                       <div><h4 className="font-medium text-green-600 mb-1 text-xs">增强模式</h4><ul className="text-xs space-y-1 text-gray-700"><li>• 📊 基于多特征检测算法</li><li>• 🔍 智能水印置信度分析</li><li>• 🎯 加权像素修复技术</li><li>• ⚖️ 平衡质量与效果</li><li>• 💎 适合大部分水印类型</li></ul></div>
@@ -170,18 +193,23 @@ const Sidebar: React.FC<SidebarProps> = ({
                 </PopoverContent>
               </Popover>
               
+              {/* API配置 */}
               {processingAlgorithm === 'sd-inpainting' && (
                 <Dialog open={isApiConfigOpen} onOpenChange={setIsApiConfigOpen}>
-                  <DialogTrigger asChild><Button variant="outline" size="sm" className="h-8 w-8 p-0"><Settings className="h-4 w-4" /></Button></DialogTrigger>
-                  <DialogContent className="sm:max-w-[425px]">
+                  <DialogTrigger asChild>
+                    <Button variant="outline" size="sm" className="h-8 w-8 p-0 flex-shrink-0">
+                      <Settings className="h-4 w-4" />
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="sm:max-w-[425px] mx-4">
                     <DialogHeader>
                       <DialogTitle>配置 AI 智能填充 API</DialogTitle>
                       <DialogDescription>请输入您的 Stable Diffusion API 密钥以使用 AI 智能填充功能</DialogDescription>
                     </DialogHeader>
                     <div className="grid gap-4 py-4">
-                      <div className="grid grid-cols-4 items-center gap-4">
-                        <label htmlFor="api-key" className="text-right text-sm font-medium">API 密钥</label>
-                        <div className="col-span-3 space-y-2">
+                      <div className="space-y-2">
+                        <label htmlFor="api-key" className="text-sm font-medium">API 密钥</label>
+                        <div className="space-y-2">
                           <input 
                             id="api-key" 
                             type="password" 
@@ -219,7 +247,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                           </Button>
                         </div>
                       </div>
-                      <div className="text-xs text-gray-500 mt-2">
+                      <div className="text-xs text-gray-500 mt-2 space-y-1">
                         <p>• API 密钥将安全加密保存在会话存储中</p>
                         <p>• 如需获取 API 密钥，请访问 Stability AI 官网</p>
                         <p>• 验证成功后即可使用 AI 智能填充功能</p>
@@ -237,13 +265,27 @@ const Sidebar: React.FC<SidebarProps> = ({
           </div>
         </div>
 
-        {/* Image List */}
-        <ScrollArea className="flex-1 pt-3">
+        {/* 图片列表 - 响应式滚动区域 */}
+        <ScrollArea className="flex-1 mt-3">
           <div className="space-y-2">
             {images.map(image => (
-              <div key={image.id} className={`flex items-center justify-between p-3 border rounded-md cursor-pointer transition-colors ${selectedImageId === image.id ? 'bg-blue-50 border-blue-200' : 'hover:bg-gray-50'}`} onClick={() => onImageSelect(image.id)}>
+              <div 
+                key={image.id} 
+                className={`flex items-center justify-between p-2 lg:p-3 border rounded-md cursor-pointer transition-colors ${
+                  selectedImageId === image.id ? 'bg-blue-50 border-blue-200' : 'hover:bg-gray-50'
+                }`} 
+                onClick={() => {
+                  onImageSelect(image.id);
+                  // 移动端选择图片后自动关闭侧边栏
+                  if (onCloseSidebar && window.innerWidth < 1024) {
+                    onCloseSidebar();
+                  }
+                }}
+              >
                 <div className="flex-1 min-w-0">
-                  <span className="text-sm truncate block" title={image.file.name}>{image.file.name}</span>
+                  <span className="text-sm truncate block" title={image.file.name}>
+                    {image.file.name}
+                  </span>
                   <span className="text-xs text-gray-500">
                     {image.processedUrl ? `已处理${image.processCount}次` : '未处理'}
                     {image.watermarkMark ? (image.isMarkingCompleted ? ' • 已完成标记' : ' • 已标记未确认') : ' • 未标记'}
@@ -254,9 +296,27 @@ const Sidebar: React.FC<SidebarProps> = ({
                     )}
                   </span>
                 </div>
-                <div className="flex items-center space-x-2 ml-2 flex-shrink-0">
-                  <ProcessButton imageItem={image} isListItem={true} onClick={handleRemoveWatermark} isProcessing={isProcessing} isBatchProcessing={isBatchProcessing} selectedImageId={selectedImageId} />
-                  <Button variant="outline" size="sm" onClick={e => { e.stopPropagation(); onRemoveImage(image.id); }} className="text-xs" disabled={isBatchProcessing}><Trash2 className="h-3 w-3" /></Button>
+                <div className="flex items-center space-x-1 lg:space-x-2 ml-2 flex-shrink-0">
+                  <ProcessButton 
+                    imageItem={image} 
+                    isListItem={true} 
+                    onClick={handleRemoveWatermark} 
+                    isProcessing={isProcessing} 
+                    isBatchProcessing={isBatchProcessing} 
+                    selectedImageId={selectedImageId} 
+                  />
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={e => { 
+                      e.stopPropagation(); 
+                      onRemoveImage(image.id); 
+                    }} 
+                    className="text-xs p-1 lg:p-2" 
+                    disabled={isBatchProcessing}
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
                 </div>
               </div>
             ))}
