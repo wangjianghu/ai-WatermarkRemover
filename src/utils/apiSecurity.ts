@@ -1,4 +1,3 @@
-
 // Enhanced API security and rate limiting
 interface RequestMetrics {
   timestamp: number;
@@ -154,7 +153,8 @@ class ApiSecurityManager {
     return true;
   }
   
-  private checkRateLimit(endpoint: string): boolean {
+  // Make checkRateLimit public so it can be used by apiRateLimiter
+  checkRateLimit(endpoint: string): boolean {
     const now = Date.now();
     const timeWindow = 60000; // 1 minute
     const maxRequests = this.getMaxRequestsForEndpoint(endpoint);
@@ -308,7 +308,7 @@ class ApiSecurityManager {
     const connection = (navigator as any).connection || (navigator as any).mozConnection || (navigator as any).webkitConnection;
     const connectionType = connection ? connection.effectiveType || 'unknown' : 'unknown';
     
-    // Get memory info safely (without using deviceMemory which doesn't exist)
+    // Get memory info safely
     let memoryUsage = 0;
     if ('memory' in performance) {
       const memory = (performance as any).memory;
