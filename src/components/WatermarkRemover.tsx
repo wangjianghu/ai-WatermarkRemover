@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useEffect } from 'react';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
@@ -8,7 +7,7 @@ import Sidebar from './watermark/Sidebar';
 import Toolbar from './watermark/Toolbar';
 import ImageGrid from './watermark/ImageGrid';
 
-import { ImageItem, WatermarkMark, DragState, ResizeState, ResizeHandle } from './watermark/types';
+import { ImageItem, WatermarkMark, DragState, ResizeState, ResizeHandle, ProcessingAlgorithm } from './watermark/types';
 import { processImageCanvas } from './watermark/imageProcessor';
 
 const WatermarkRemover = () => {
@@ -17,7 +16,7 @@ const WatermarkRemover = () => {
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isMarkingMode, setIsMarkingMode] = useState(false);
-  const [processingAlgorithm, setProcessingAlgorithm] = useState<'enhanced' | 'conservative' | 'aggressive' | 'lama' | 'sd-inpainting'>('lama');
+  const [processingAlgorithm, setProcessingAlgorithm] = useState<ProcessingAlgorithm>('lama');
   const [zoom, setZoom] = useState<number>(1);
   const [dragState, setDragState] = useState<DragState>({ isDragging: false, startX: 0, startY: 0, currentX: 0, currentY: 0 });
   const [resizeState, setResizeState] = useState<ResizeState>({ isResizing: false, resizeHandle: null, startX: 0, startY: 0 });
@@ -59,6 +58,10 @@ const WatermarkRemover = () => {
       setImages(prev => [...prev, ...newImages]);
       event.target.value = '';
     }
+  };
+
+  const handleAlgorithmChange = (value: string) => {
+    setProcessingAlgorithm(value as ProcessingAlgorithm);
   };
 
   const syncScroll = useCallback((source: 'original' | 'processed', scrollLeft: number, scrollTop: number) => {
@@ -376,7 +379,7 @@ const WatermarkRemover = () => {
           isApiConfigOpen={isApiConfigOpen}
           onFileUpload={handleFileUpload}
           onBatchProcess={handleBatchProcess}
-          onAlgorithmChange={setProcessingAlgorithm}
+          onAlgorithmChange={handleAlgorithmChange}
           onImageSelect={setSelectedImageId}
           onRemoveImage={handleRemoveImage}
           setSdApiKey={setSdApiKey}

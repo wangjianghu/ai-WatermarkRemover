@@ -1,4 +1,3 @@
-
 export interface ImageItem {
   id: string;
   file: File;
@@ -38,3 +37,4 @@ export interface ResizeState {
   startY: number;
 }
 
+export type ProcessingAlgorithm = 'enhanced' | 'conservative' | 'aggressive' | 'lama' | 'sd-inpainting';
