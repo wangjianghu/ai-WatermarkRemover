@@ -426,6 +426,109 @@ class ApiSecurityManager {
 
 export const apiSecurity = ApiSecurityManager.getInstance();
 
+// Rate limiter instance for external use
+export const apiRateLimiter = {
+  canMakeRequest: () => apiSecurity.checkRateLimit('default'),
+  recordRequest: () => apiSecurity.recordResponse('default', 0, true)
+};
+
+// Validation functions for external use
+export const validateFileUpload = (file: File) => {
+  const maxSize = 50 * 1024 * 1024; // 50MB
+  const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+  
+  if (!file) {
+    return { isValid: false, error: '请选择文件' };
+  }
+  
+  if (file.size > maxSize) {
+    return { isValid: false, error: '文件大小不能超过50MB' };
+  }
+  
+  if (!allowedTypes.includes(file.type)) {
+    return { isValid: false, error: '只支持 JPEG、PNG、WebP 和 GIF 格式' };
+  }
+  
+  return { isValid: true };
+};
+
+export const validateImageDimensions = (width: number, height: number) => {
+  const maxDimension = 8192;
+  const minDimension = 32;
+  
+  if (width < minDimension || height < minDimension) {
+    return { isValid: false, error: `图片尺寸不能小于 ${minDimension}x${minDimension}` };
+  }
+  
+  if (width > maxDimension || height > maxDimension) {
+    return { isValid: false, error: `图片尺寸不能超过 ${maxDimension}x${maxDimension}` };
+  }
+  
+  return { isValid: true };
+};
+
+export const validateZoomLevel = (zoom: number) => {
+  if (zoom < 0.1 || zoom > 10) {
+    return { isValid: false, error: '缩放级别必须在 0.1 到 10 之间' };
+  }
+  
+  return { isValid: true };
+};
+
+export const validateWatermarkMark = (mark: any) => {
+  if (!mark) {
+    return { isValid: false, error: '水印标记不能为空' };
+  }
+  
+  if (typeof mark !== 'object') {
+    return { isValid: false, error: '水印标记格式无效' };
+  }
+  
+  const { x, y, width, height } = mark;
+  
+  if (typeof x !== 'number' || typeof y !== 'number' || 
+      typeof width !== 'number' || typeof height !== 'number') {
+    return { isValid: false, error: '水印标记坐标必须是数字' };
+  }
+  
+  if (x < 0 || y < 0 || width <= 0 || height <= 0) {
+    return { isValid: false, error: '水印标记尺寸无效' };
+  }
+  
+  if (x + width > 1 || y + height > 1) {
+    return { isValid: false, error: '水印标记超出图片范围' };
+  }
+  
+  return { isValid: true };
+};
+
+export const validateApiKey = (key: string) => {
+  if (!key || typeof key !== 'string') {
+    return false;
+  }
+  
+  // Basic format validation for Stability AI API keys
+  if (key.length < 20 || !key.startsWith('sk-')) {
+    return false;
+  }
+  
+  return true;
+};
+
+export const sanitizeInput = (input: string) => {
+  if (!input || typeof input !== 'string') {
+    return '';
+  }
+  
+  return input
+    .replace(/[<>'"&\x00-\x1f\x7f-\x9f]/g, '')
+    .replace(/javascript:/gi, '')
+    .replace(/data:/gi, '')
+    .replace(/vbscript:/gi, '')
+    .trim()
+    .slice(0, 1000); // Limit length
+};
+
 // Enhanced security wrapper for fetch calls
 export const secureApiCall = async <T>(
   url: string,
