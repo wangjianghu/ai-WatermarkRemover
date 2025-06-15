@@ -1,3 +1,4 @@
+
 import { validateApiKey, apiRateLimiter } from './apiSecurity';
 import { secureSession } from './secureSession';
 import { handleSecureError } from './secureErrorHandler';
@@ -24,7 +25,7 @@ class SecureApiClient {
     return SecureApiClient.instance;
   }
   
-  setApiKey(key: string): void {
+  setApiKey(key: string): Promise<void> {
     return secureApiMiddleware(async () => {
       if (!secureSession.isSessionValid()) {
         securityMonitor.logEvent('session_violation', 'high', {
